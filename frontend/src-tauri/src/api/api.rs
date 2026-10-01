@@ -137,6 +137,9 @@ pub struct MeetingTranscript {
     pub audio_end_time: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    // Per-person diarization label (e.g., SPEAKER_00) from the sidecar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 /// Meeting metadata without transcripts (for pagination)
@@ -881,6 +884,7 @@ pub async fn api_get_meeting_transcripts<R: Runtime>(
                     audio_start_time: t.audio_start_time,
                     audio_end_time: t.audio_end_time,
                     duration: t.duration,
+                    speaker: t.speaker,
                 })
                 .collect::<Vec<_>>();
 
@@ -1002,6 +1006,46 @@ pub async fn api_save_transcript<R: Runtime>(
                 e
             );
             Err(format!("Failed to save transcript: {}", e))
+        }
+    }
+}
+
+/// Updates the speaker label of a single transcript segment (rename person).
+#[tauri::command]
+pub async fn api_update_transcript_speaker<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    meeting_id: String,
+    transcript_id: String,
+    speaker: String,
+) -> Result<serde_json::Value, String> {
+    log_info!(
+        "api_update_transcript_speaker called for meeting_id: {}, transcript_id: {}, speaker: '{}'",
+        meeting_id,
+        transcript_id,
+        speaker
+    );
+
+    let pool = state.db_manager.pool();
+
+    match TranscriptsRepository::update_transcript_speaker(pool, &meeting_id, &transcript_id, &speaker).await {
+        Ok(true) => {
+            log_info!("Successfully updated speaker for transcript {}", transcript_id);
+            Ok(serde_json::json!({
+                "status": "success",
+                "message": "Speaker updated successfully",
+                "meeting_id": meeting_id,
+                "transcript_id": transcript_id,
+                "speaker": speaker.trim()
+            }))
+        }
+        Ok(false) => {
+            log_error!("No transcript found with id {} in meeting {}", transcript_id, meeting_id);
+            Err(format!("No transcript found with id {} in meeting {}", transcript_id, meeting_id))
+        }
+        Err(e) => {
+            log_error!("Error updating speaker for transcript {}: {}", transcript_id, e);
+            Err(format!("Failed to update speaker: {}", e))
         }
     }
 }

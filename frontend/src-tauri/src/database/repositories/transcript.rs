@@ -47,8 +47,8 @@ impl TranscriptsRepository {
         for segment in transcripts {
             let transcript_id = format!("transcript-{}", Uuid::new_v4());
             let result = sqlx::query(
-                "INSERT INTO transcripts (id, meeting_id, transcript, timestamp, audio_start_time, audio_end_time, duration)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO transcripts (id, meeting_id, transcript, timestamp, audio_start_time, audio_end_time, duration, speaker)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             )
             .bind(&transcript_id)
             .bind(&meeting_id)
@@ -57,6 +57,7 @@ impl TranscriptsRepository {
             .bind(segment.audio_start_time)
             .bind(segment.audio_end_time)
             .bind(segment.duration)
+            .bind(&segment.speaker)
             .execute(&mut *transaction)
             .await;
 
@@ -80,6 +81,47 @@ impl TranscriptsRepository {
         transaction.commit().await?;
 
         Ok(meeting_id)
+    }
+
+    /// Updates the speaker label of a single transcript segment.
+    /// Returns false if no row matched (segment not found or wrong meeting).
+    pub async fn update_transcript_speaker(
+        pool: &SqlitePool,
+        meeting_id: &str,
+        transcript_id: &str,
+        speaker: &str,
+    ) -> Result<bool, SqlxError> {
+        if meeting_id.trim().is_empty() || transcript_id.trim().is_empty() {
+            return Err(SqlxError::Protocol(
+                "meeting_id and transcript_id cannot be empty".to_string(),
+            ));
+        }
+
+        let speaker_value = if speaker.trim().is_empty() {
+            None
+        } else {
+            Some(speaker.trim().to_string())
+        };
+
+        let mut conn = pool.acquire().await?;
+        let mut transaction = conn.begin().await?;
+
+        let rows_affected = sqlx::query(
+            "UPDATE transcripts SET speaker = ? WHERE id = ? AND meeting_id = ?",
+        )
+        .bind(speaker_value)
+        .bind(transcript_id)
+        .bind(meeting_id)
+        .execute(&mut *transaction)
+        .await?;
+
+        if rows_affected.rows_affected() == 0 {
+            transaction.rollback().await?;
+            return Ok(false);
+        }
+
+        transaction.commit().await?;
+        Ok(true)
     }
 
     /// Searches for a query string within the transcripts.

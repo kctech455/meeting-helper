@@ -34,6 +34,9 @@ export interface VirtualizedTranscriptViewProps {
     totalCount?: number;
     loadedCount?: number;
     onLoadMore?: () => void;
+
+    // Speaker rename: called with the transcript id and the new speaker label.
+    onUpdateSpeaker?: (transcriptId: string, speaker: string | null) => Promise<boolean>;
 }
 
 // Threshold for enabling virtualization (below this, use simple rendering)
@@ -69,17 +72,42 @@ const TranscriptSegment = memo(function TranscriptSegment({
     timestamp,
     text,
     confidence,
+    speaker,
     isStreaming,
     showConfidence,
+    onUpdateSpeaker,
 }: {
     id: string;
     timestamp: number;
     text: string;
     confidence?: number;
+    speaker?: string;
     isStreaming: boolean;
     showConfidence: boolean;
+    onUpdateSpeaker?: (transcriptId: string, speaker: string | null) => Promise<boolean>;
 }) {
+    const [editingSpeaker, setEditingSpeaker] = useState(false);
+    const [speakerDraft, setSpeakerDraft] = useState(speaker ?? '');
+    const [savingSpeaker, setSavingSpeaker] = useState(false);
+
     const displayText = cleanStopWords(text) || (text.trim() === '' ? '[Silence]' : text);
+
+    const commitSpeaker = async () => {
+        const next = speakerDraft.trim() === '' ? null : speakerDraft.trim();
+        setSavingSpeaker(true);
+        try {
+            const ok = onUpdateSpeaker
+                ? await onUpdateSpeaker(id, next)
+                : false;
+            if (ok) {
+                setEditingSpeaker(false);
+            }
+        } finally {
+            setSavingSpeaker(false);
+        }
+    };
+
+    const label = speaker && speaker.trim() !== '' ? speaker : null;
 
     return (
         <div id={`segment-${id}`} className="mb-3">
@@ -97,6 +125,52 @@ const TranscriptSegment = memo(function TranscriptSegment({
                     </TooltipContent>
                 </Tooltip>
                 <div className="flex-1">
+                    {/* Speaker label chip (click to rename) */}
+                    {onUpdateSpeaker && (
+                        <div className="mb-1">
+                            {editingSpeaker ? (
+                                <span className="inline-flex items-center gap-1">
+                                    <input
+                                        value={speakerDraft}
+                                        onChange={(e) => setSpeakerDraft(e.target.value)}
+                                        placeholder="Speaker name"
+                                        className="text-xs px-1.5 py-0.5 border border-blue-400 rounded focus:outline-none"
+                                        autoFocus
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') { void commitSpeaker(); }
+                                            if (e.key === 'Escape') { setEditingSpeaker(false); setSpeakerDraft(speaker ?? ''); }
+                                        }}
+                                    />
+                                    <button
+                                        onClick={() => void commitSpeaker()}
+                                        disabled={savingSpeaker}
+                                        className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                                    >
+                                        {savingSpeaker ? 'Saving…' : 'Save'}
+                                    </button>
+                                    <button
+                                        onClick={() => { setEditingSpeaker(false); setSpeakerDraft(speaker ?? ''); }}
+                                        className="text-xs text-gray-400 hover:text-gray-600"
+                                    >
+                                        Cancel
+                                    </button>
+                                </span>
+                            ) : (
+                                <button
+                                    onClick={() => { setEditingSpeaker(true); setSpeakerDraft(speaker ?? ''); }}
+                                    title={label ? 'Click to rename speaker' : 'Click to assign speaker'}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                                        label
+                                            ? 'bg-blue-50 text-blue-800 hover:bg-blue-100'
+                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                                    {label ?? 'Speaker'}
+                                </button>
+                            )}
+                        </div>
+                    )}
                     {isStreaming ? (
                         <div className="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2">
                             <p className="text-base text-gray-800 leading-relaxed">{displayText}</p>

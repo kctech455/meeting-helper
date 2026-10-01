@@ -25,6 +25,8 @@ interface UsePaginatedTranscriptsReturn {
     loadMore: () => Promise<void>;
     reset: () => void;
     refetch: () => Promise<void>;
+    /** Update the speaker label of a single transcript segment (rename person). */
+    updateSpeaker: (transcriptId: string, speaker: string | null) => Promise<boolean>;
 }
 
 /**
@@ -37,6 +39,7 @@ function convertTranscriptsToSegments(transcripts: Transcript[]): TranscriptSegm
         endTime: t.audio_end_time,
         text: t.text,
         confidence: t.confidence,
+        speaker: t.speaker,
     }));
 }
 
@@ -200,6 +203,35 @@ export function usePaginatedTranscripts({
         };
     }, [meetingId, reset, refetch]);
 
+    // Update the speaker label of a single transcript segment (optimistic rename).
+    const updateSpeaker = useCallback(async (transcriptId: string, speaker: string | null): Promise<boolean> => {
+        if (!meetingId) return false;
+
+        const trimmedSpeaker = speaker ? speaker.trim() : '';
+        let success = false;
+        try {
+            await invoke('api_update_transcript_speaker', {
+                meetingId,
+                transcriptId,
+                speaker: trimmedSpeaker,
+            });
+            success = true;
+        } catch (err) {
+            console.error('Failed to update speaker:', err);
+            setError('Failed to update speaker');
+            success = false;
+        }
+
+        if (success) {
+            // Optimistically patch local state to the new label (empty string => null).
+            const newSpeaker = trimmedSpeaker.length > 0 ? trimmedSpeaker : null;
+            setTranscripts(prev => prev.map(t =>
+                t.id === transcriptId ? { ...t, speaker: newSpeaker } : t
+            ));
+        }
+        return success;
+    }, [meetingId]);
+
     // Convert to segments (memoized)
     const segments = useMemo(() =>
         convertTranscriptsToSegments(transcripts),
@@ -219,5 +251,6 @@ export function usePaginatedTranscripts({
         loadMore,
         reset,
         refetch,
+        updateSpeaker,
     };
 }
