@@ -223,8 +223,8 @@ export function usePaginatedTranscripts({
         }
 
         if (success) {
-            // Optimistically patch local state to the new label (empty string => null).
-            const newSpeaker = trimmedSpeaker.length > 0 ? trimmedSpeaker : null;
+            // Optimistically patch local state to the new label (empty string => undefined, matching Transcript.speaker?: string).
+            const newSpeaker = trimmedSpeaker.length > 0 ? trimmedSpeaker : undefined;
             setTranscripts(prev => prev.map(t =>
                 t.id === transcriptId ? { ...t, speaker: newSpeaker } : t
             ));
