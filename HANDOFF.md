@@ -2,7 +2,7 @@
 
 > Resume file. Read this to pick up the project without reloading the conversation.
 
-**Last updated: 2026-10-01** — Whisper-rs bump 0.13.2 → 0.16.0, fork compiles on Win11 (debug + release exit 0), release `meetily.exe` verified, Cargo.lock synced, docs audited. Fresh session: read the whole file, then jump to §9 for the open ends.
+**Last updated: 2026-10-01** — Whisper-rs bump 0.13.2 → 0.16.0; fork now FULLY builds on Win11: Node 22+pnpm installed, `tauri build --no-bundle` produces a self-contained `meetily.exe` (embedded frontend, no localhost dependency) that RUNS (verified alive + responding, no :3118 listener). Fixed the fork's staged speaker type-error (`null`→`undefined`, commit 32dc563). Winget fixed via `--accept-source-agreements`. Build machine is now WIN11, not this VM. Fresh session: read whole file, jump to §8/SIGNING for open ends.
 
 ---
 
@@ -79,7 +79,28 @@ fae6750  Wire per-person speaker label: DB, repo, command, rename UI  [staged, p
 3398a9f  whisper-rs 0.15.1 -> 0.16.0  (pair sys 0.15.0 — the bindgen fix)
 3302819  Fix whisper-rs 0.16 API renames + speaker initializers
 508f9fe  Sync Cargo.lock to whisper-rs 0.16.0 / sys 0.15.0
+32dc563  Fix speaker type error in optimistic rename (null -> undefined)  [2026-10-01, NEW]
 ```
+
+## 6B. WIN11 IS NOW THE BUILD MACHINE (2026-10-01 — verified)
+
+The fork now **fully builds and packages on the Win11 box** — no more Proxmox VM builds. What changed:
+- **Node 22.11.0 installed** at `C:\Users\OIT\node22\node-v22.11.0-win-x64` (winget was broken then → direct zip). `npm`/`pnpm` in that dir.
+- **pnpm 12.8.1** installed globally (via npm, prefix = node22 dir). `pnpm install` → 643 deps, lockfile supply-chain verified ✓
+- **Winget FIXED** on the box: it crashed with `0xC0000005` on install before. Root cause was the source-agreement EULA. `winget search notepad --accept-source-agreements` works, and a real install (`winget install Notepad++.Notepad++`) succeeds. Use `--accept-source-agreements --accept-package-agreements` on all winget commands.
+- **`tauri build --no-bundle`** works end-to-end on the box → self-contained `meetily.exe` (44.4 MB at `C:\Users\OIT\meeting-helper-build\target\release\meetily.exe`). No localhost/server dependency.
+
+### THE WORKING BUILD PIPELINE ON WIN11 (proven, use this)
+Reusable `.bat` scripts at `C:\Users\OIT\` (also mirrored in `/home/kc/.hermes/cache/scratch/`):
+1. `mh_frontend_install.bat` — sets node on PATH, runs `pnpm install` (only needed once / on dep changes)
+2. `mh_frontend_build.bat` — `pnpm build` (Next.js → `out/`)
+3. `mh_tauri_build.bat` — calls `vcvars64.bat` + sets cargo/git/LLVM/node PATH + `LIBCLANG_PATH`, then `pnpm tauri build --no-bundle`
+
+**Critical gotchas** (learned this session, do not regress):
+- **Kill the running meetily first** — the exe locks `target\release\meetily.exe`; `tauri build` fails with `os error 32` (file in use) if the app is running. `taskkill /IM meetily.exe /F` before rebuilding.
+- The `--no-bundle` flag sidesteps signing-key requirements (see §8 SIGNING). For a real installer, drop it and provide signing keys.
+- cmd PATH chaining with `set X=...& call %X%` does NOT expand inline — write `.bat` files locally, scp to box, execute by path (the proven remote-work pattern from §5).
+- MSVC is at `C:\BuildTools\...` (vcvars64.bat at `C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat`), NOT `C:\Program Files (x86)`. LLVM at `C:\Users\OIT\LLVM\LLVM`.
 
 ---
 
@@ -96,10 +117,16 @@ fae6750  Wire per-person speaker label: DB, repo, command, rename UI  [staged, p
 
 ## 8. NEXT STEPS (open ends)
 
-1. **`tauri build` (installer bundle)** — Rust side is fully proven, but bundling needs Node/npm (`tauri-cli`) on the box. Not yet attempted.
+1. **SIGNING KEYS (for installer/updater)** — the full `tauri build` (NSIS/MSI installer + updater artifacts) needs `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (config has `createUpdaterArtifacts: true` + Windows `signCommand`). We used `--no-bundle` to sidestep this for the test exe. **TODO: obtain a signing key** (see §7 ⚠️ note appended below) before producing a distributable installer.
 2. **README PRO-diarization line** — decide & update (see §7 ⚠️).
 3. **GPU path** — built CPU/AVX2. Whisper-rs `cuda`/Vulkan features exist behind flags; not exercised on this fork build (the POC sidecar already uses GPU WhisperX on the RTX box).
 4. **Push the sidecar handoff wiring** if not already in the fork — verify `apply_speakers.py` bridge is fully integrated into the Tauri app (it was verified standalone earlier; the `speaker: None` at VAD-stage confirms merge happens later).
+
+### SIGNING KEYS — how to get started (for when you want a real installer)
+- The build already verifies `TAURI_SIGNING_PRIVATE_KEY`/`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` via `build.ps1` (loads from `.env`, expects key in `.tauri\meetily.key`).
+- **Two separate keys exist in Tauri:** (a) **code-signing cert** for Windows (SignTool / `signCommand`, needs a real cert from a CA like DigiCert) and (b) the **updater signing keypair** (generated by `tauri signer generate`, public key goes in `tauri.conf.json` `plugins.updater.pubkey` — currently a placeholder).
+- For a locally distributed installer you can skip the Windows CA cert and just generate the updater keypair: `pnpm tauri signer generate`. For broader distribution you'll need a real code-signing certificate.
+- The `pubkey` in `tauri.conf.json` (L115) is the minisign placeholder from upstream — replace it with your own keypair's public key when you obtain one.
 
 ---
 
