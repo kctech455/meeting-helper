@@ -27,6 +27,8 @@ interface UsePaginatedTranscriptsReturn {
     refetch: () => Promise<void>;
     /** Update the speaker label of a single transcript segment (rename person). */
     updateSpeaker: (transcriptId: string, speaker: string | null) => Promise<boolean>;
+    /** Bulk-rename a speaker label across all segments (e.g. SPEAKER_00 -> "John"). */
+    renameSpeaker: (from: string, to: string) => Promise<number | null>;
 }
 
 /**
@@ -232,6 +234,40 @@ export function usePaginatedTranscripts({
         return success;
     }, [meetingId]);
 
+    // Bulk-rename a speaker label across all segments of the current meeting
+    // (e.g. SPEAKER_00 -> "John"). Overwrites every row labelled `from`,
+    // matching the one-at-a-time rename semantics. Returns rows changed.
+    const renameSpeaker = useCallback(async (from: string, to: string): Promise<number | null> => {
+        if (!meetingId) return null;
+
+        const trimmedFrom = from.trim();
+        const trimmedTo = to.trim();
+        try {
+            const res = await invoke('api_rename_speaker', {
+                meetingId,
+                from: trimmedFrom,
+                to: trimmedTo,
+            }) as { updated_count?: number };
+
+            const count = res?.updated_count ?? 0;
+
+            // Optimistically patch local state: every segment whose speaker === from
+            // becomes to (empty string => undefined, matching Transcript.speaker?: string).
+            const newSpeaker = trimmedTo.length > 0 ? trimmedTo : undefined;
+            setTranscripts(prev => prev.map(t =>
+                t.speaker === trimmedFrom ? { ...t, speaker: newSpeaker } : t
+            ));
+
+            // Loaded transcripts are the in-memory source for the segment list; if the
+            // rename touched rows not yet loaded, a refetch is required to stay consistent.
+            return count;
+        } catch (err) {
+            console.error('Failed to rename speaker:', err);
+            setError('Failed to rename speaker');
+            return null;
+        }
+    }, [meetingId]);
+
     // Convert to segments (memoized)
     const segments = useMemo(() =>
         convertTranscriptsToSegments(transcripts),
@@ -252,5 +288,6 @@ export function usePaginatedTranscripts({
         reset,
         refetch,
         updateSpeaker,
+        renameSpeaker,
     };
 }

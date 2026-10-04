@@ -125,6 +125,56 @@ impl TranscriptsRepository {
         Ok(true)
     }
 
+    /// Bulk-renames a speaker label across all transcript segments of a meeting.
+    ///
+    /// `UPDATE transcripts SET speaker = :to WHERE meeting_id = :meeting_id AND speaker = :from`
+    /// — overwriting semantics, matching the one-at-a-time behavior: any segment currently
+    /// labelled `from` becomes `to`, even if `to` already exists elsewhere in the meeting.
+    ///
+    /// Returns the number of transcript rows renamed.
+    pub async fn rename_speaker(
+        pool: &SqlitePool,
+        meeting_id: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<u64, SqlxError> {
+        if meeting_id.trim().is_empty() {
+            return Err(SqlxError::Protocol(
+                "meeting_id cannot be empty".to_string(),
+            ));
+        }
+
+        let from_value = if from.trim().is_empty() {
+            None
+        } else {
+            Some(from.trim().to_string())
+        };
+        let to_value = if to.trim().is_empty() {
+            None
+        } else {
+            Some(to.trim().to_string())
+        };
+
+        let rows_affected = sqlx::query(
+            "UPDATE transcripts SET speaker = ? WHERE meeting_id = ? AND speaker = ?",
+        )
+        .bind(&to_value)
+        .bind(meeting_id)
+        .bind(&from_value)
+        .execute(pool)
+        .await?;
+
+        info!(
+            "rename_speaker: renamed {} transcript rows from {:?} to {:?} for meeting {}",
+            rows_affected.rows_affected(),
+            from_value,
+            to_value,
+            meeting_id,
+        );
+
+        Ok(rows_affected.rows_affected())
+    }
+
     /// Bulk-applies diarized speaker labels to transcript segments by audio time range.
     ///
     /// For each diarized segment `(start, end, speaker)`:

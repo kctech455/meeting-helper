@@ -734,6 +734,7 @@ pub fn run() {
             api::api_save_meeting_title,
             api::api_save_transcript,
             api::api_update_transcript_speaker,
+            api::api_rename_speaker,
             api::open_meeting_folder,
             api::test_backend_connection,
             api::debug_backend_connection,

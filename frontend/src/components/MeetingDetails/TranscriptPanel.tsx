@@ -28,6 +28,10 @@ interface TranscriptPanelProps {
   meetingId?: string;
   meetingFolderPath?: string | null;
   onRefetchTranscripts?: () => Promise<void>;
+
+  // Batch speaker rename props
+  onRenameSpeaker?: (from: string, to: string) => Promise<number | null>;
+  speakerLabels?: string[];
 }
 
 export function TranscriptPanel({
@@ -48,6 +52,8 @@ export function TranscriptPanel({
   meetingId,
   meetingFolderPath,
   onRefetchTranscripts,
+  onRenameSpeaker,
+  speakerLabels,
 }: TranscriptPanelProps) {
   // Convert transcripts to segments if pagination is not used but we want virtualization
   const convertedSegments = useMemo(() => {
@@ -75,6 +81,8 @@ export function TranscriptPanel({
           meetingId={meetingId}
           meetingFolderPath={meetingFolderPath}
           onRefetchTranscripts={onRefetchTranscripts}
+          onRenameSpeaker={onRenameSpeaker}
+          speakerLabels={speakerLabels}
         />
       </div>
 

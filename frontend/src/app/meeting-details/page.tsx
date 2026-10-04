@@ -1,6 +1,6 @@
 "use client"
 import { useSidebar } from "@/components/Sidebar/SidebarProvider";
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { MeetingSummary, SummaryProcessResponse, Transcript } from "@/types";
 import PageContent from "./page-content";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -47,6 +47,7 @@ function MeetingDetailsContent() {
     loadedCount,
     loadMore,
     refetch,
+    renameSpeaker,
     error: transcriptError,
   } = usePaginatedTranscripts({ meetingId: meetingId || '' });
 
@@ -161,6 +162,25 @@ function MeetingDetailsContent() {
     // This function is kept for compatibility with onMeetingUpdated callback
     console.log('fetchMeetingDetails called - pagination hook will handle refetch');
   }, [meetingId]);
+
+  // Batch-rename a speaker label across the meeting, then refetch to sync paginated state.
+  const handleRenameSpeaker = useCallback(async (from: string, to: string): Promise<number | null> => {
+    const count = await renameSpeaker(from, to);
+    if (count !== null) {
+      await refetch();
+    }
+    return count;
+  }, [renameSpeaker, refetch]);
+
+  // Distinct speaker labels present in the loaded transcripts (for the rename picker).
+  const speakerLabels = useMemo(() => {
+    const seen = new Set<string>();
+    for (const t of transcripts) {
+      const s = t.speaker?.trim();
+      if (s) seen.add(s);
+    }
+    return Array.from(seen).sort();
+  }, [transcripts]);
 
   // Reset states when meetingId changes (prevent race conditions)
   useEffect(() => {
@@ -284,6 +304,8 @@ function MeetingDetailsContent() {
       await refetchMeetings();
     }}
     onRefetchTranscripts={refetch}
+    onRenameSpeaker={handleRenameSpeaker}
+    speakerLabels={speakerLabels}
     // Pagination props for efficient transcript loading
     segments={segments}
     hasMore={hasMore}

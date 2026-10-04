@@ -1050,6 +1050,60 @@ pub async fn api_update_transcript_speaker<R: Runtime>(
     }
 }
 
+/// Bulk-renames a speaker label across all transcript segments of a meeting.
+///
+/// `meeting_id` — target meeting
+/// `from`        — the current label to replace (e.g. "SPEAKER_00")
+/// `to`          — the new label (e.g. "John")
+///
+/// Overwrites every row where `speaker = from`, matching the one-at-a-time
+/// rename semantics. Returns the number of rows renamed.
+#[tauri::command]
+pub async fn api_rename_speaker<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    meeting_id: String,
+    from: String,
+    to: String,
+) -> Result<serde_json::Value, String> {
+    log_info!(
+        "api_rename_speaker called for meeting_id: {}, from: '{}', to: '{}'",
+        meeting_id,
+        from,
+        to
+    );
+
+    let pool = state.db_manager.pool();
+
+    match TranscriptsRepository::rename_speaker(pool, &meeting_id, &from, &to).await {
+        Ok(updated_count) => {
+            log_info!(
+                "api_rename_speaker: renamed {} rows for meeting {}",
+                updated_count,
+                meeting_id
+            );
+            Ok(serde_json::json!({
+                "status": "success",
+                "message": format!("Renamed speaker '{}' to '{}' ({} rows)", from.trim(), to.trim(), updated_count),
+                "meeting_id": meeting_id,
+                "from": from.trim(),
+                "to": to.trim(),
+                "updated_count": updated_count
+            }))
+        }
+        Err(e) => {
+            log_error!(
+                "Error renaming speaker from '{}' to '{}' for meeting {}: {}",
+                from,
+                to,
+                meeting_id,
+                e
+            );
+            Err(format!("Failed to rename speaker: {}", e))
+        }
+    }
+}
+
 /// Opens the meeting's recording folder in the system file explorer
 #[tauri::command]
 pub async fn open_meeting_folder<R: Runtime>(
