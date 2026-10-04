@@ -339,4 +339,12 @@ meetily.exe 42.8MB BUILT on Win11 (verified running 120s+; workspace-root target
 - Display: speaker field → blue `● SPEAKER_nn` chip (`VirtualizedTranscriptView.tsx:128`).
 - Manual rename: click chip → inline input → "John"/"Sue" → Enter → persists
   (UI:VTV:159 → hook:usePaginatedTranscripts.ts:207 → cmd:api.rs:1015 → SQL:transcript.rs:109).
-- **GAP (new, ~1-2d):** batch rename "rename SPEAKER_00 everywhere" — no `api_rename_speaker(meeting_id, from, to)` yet.
+- ✅ **GAP CLOSED (2026-10-03):** batch rename implemented — commit `00e0552`.
+  New `api_rename_speaker(meeting_id, from, to)` command + repo `rename_speaker`
+  (`UPDATE transcripts SET speaker = :to WHERE meeting_id = :meeting_id AND speaker = :from`,
+  overwriting semantics, returns row count). Frontend: `renameSpeaker(from, to)` in
+  usePaginatedTranscripts.ts (optimistic patch), new `RenameSpeakerDialog.tsx` (from-label
+  picker + new-name input) wired into TranscriptButtonGroup "Speakers" button and threaded
+  through TranscriptPanel → page-content → page.tsx (handler refetches to sync pagination).
+  `speakerLabels` derived from loaded transcripts. Frontend tsc + next build PASS on VM.
+  **Rust additions NOT yet compiled** — verify on Win11 (see §6B pipeline) before tag.
