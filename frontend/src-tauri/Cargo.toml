@@ -107,6 +107,10 @@ silero_rs = { git = "https://github.com/emotechlab/silero-rs", rev = "26a6460", 
 ort = { version = "2.0.0-rc.10" }  # ONNX Runtime for Parakeet models
 thiserror = "2.0.16"                # Error handling for Parakeet
 
+# Native speaker diarization (pyannote-rs, MIT): segmentation + wespeaker embeddings on ONNX Runtime.
+# load-dynamic keeps bundled onnxruntime.dll (same as parakeet) instead of static-linking ORT.
+pyannote-rs = { version = "0.3.4", features = ["load-dynamic"] }
+
 # Async
 tokio = { version = "1.32.0", features = ["full", "tracing"] }
 tokio-util = "0.7"  # Utilities for tokio including CancellationToken

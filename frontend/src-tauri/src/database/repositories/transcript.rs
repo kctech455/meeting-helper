@@ -1,4 +1,5 @@
 use crate::api::{TranscriptSearchResult, TranscriptSegment};
+use crate::diarization::pipeline::DiarizedSegment;
 use chrono::Utc;
 use sqlx::{Connection, Error as SqlxError, SqlitePool};
 use tracing::{error, info};
@@ -122,6 +123,57 @@ impl TranscriptsRepository {
 
         transaction.commit().await?;
         Ok(true)
+    }
+
+    /// Bulk-applies diarized speaker labels to transcript segments by audio time range.
+    ///
+    /// For each diarized segment `(start, end, speaker)`:
+    ///   UPDATE transcripts SET speaker = ?
+    ///   WHERE meeting_id = ?
+    ///     AND audio_start_time BETWEEN ? AND ?
+    ///     AND speaker IS NULL
+    /// with a ~0.05s pad on each boundary (mirrors the proven `apply_speakers.py`
+    /// overlap logic from the POC sidecar). Only fills segments that still have
+    /// `speaker IS NULL` so it never overwrites a manual/user-set label.
+    ///
+    /// Returns the total number of transcript rows updated.
+    pub async fn apply_speaker_merge(
+        pool: &SqlitePool,
+        meeting_id: &str,
+        segments: &[DiarizedSegment],
+    ) -> Result<u64, SqlxError> {
+        const PAD: f64 = 0.05;
+        let mut total: u64 = 0;
+        let mut conn = pool.acquire().await?;
+        let mut transaction = conn.begin().await?;
+
+        for seg in segments {
+            let start = seg.start - PAD;
+            let end = seg.end + PAD;
+            let result = sqlx::query(
+                "UPDATE transcripts SET speaker = ?
+                 WHERE meeting_id = ?
+                   AND audio_start_time >= ?
+                   AND audio_start_time <= ?
+                   AND speaker IS NULL",
+            )
+            .bind(&seg.speaker)
+            .bind(meeting_id)
+            .bind(start)
+            .bind(end)
+            .execute(&mut *transaction)
+            .await?;
+            total += result.rows_affected();
+        }
+
+        transaction.commit().await?;
+        info!(
+            "apply_speaker_merge: updated {} transcript rows for meeting {} ({} diarized segments)",
+            total,
+            meeting_id,
+            segments.len()
+        );
+        Ok(total)
     }
 
     /// Searches for a query string within the transcripts.

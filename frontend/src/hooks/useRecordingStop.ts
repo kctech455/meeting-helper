@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateContext';
+import { invoke } from '@tauri-apps/api/core';
 import { storageService } from '@/services/storageService';
 import { transcriptService } from '@/services/transcriptService';
 import Analytics from '@/lib/analytics';
@@ -263,6 +264,22 @@ export function useRecordingStop(
           if (!meetingId) {
             console.error('No meeting_id in response:', responseData);
             throw new Error('No meeting ID received from save operation');
+          }
+
+          // 🔥 DIARIZATION TRIGGER: fire native speaker diarization in the background
+          // right after the meeting is persisted. It labels transcripts.speaker
+          // asynchronously (emit diarization-progress / diarization-done). Non-blocking —
+          // the stop/navigation flow continues immediately.
+          if (folderPath) {
+            const audioPath = `${folderPath}/audio.mp4`;
+            invoke('start_diarization', {
+              audioPath,
+              meetingId,
+            })
+              .then((res) => console.log('Diarization started:', res))
+              .catch((err) => console.warn('Diarization could not start:', err));
+          } else {
+            console.warn('No folder path — skipping auto-diarization');
           }
 
           let shouldDetectSummaryLanguage = false;
