@@ -2,16 +2,14 @@
 
 > Resume file. Read this to pick up the project without reloading the conversation.
 
-**Last updated: 2026-10-03** — §11 Phase 1b DONE: `k_estimator` K-estimator VALIDATED
-(interview K=2 exact via silhouette, board ~6→7) + live 3.1 config open item RESOLVED
-(the file is `config.yaml`, clustering = AgglomerativeClustering HAC, no autotune/spectral
-in the runtime → meetily must estimate K itself). Prior (2026-10-01): Whisper-rs bump
-0.13.2 → 0.16.0; fork now FULLY builds on Win11: Node 22+pnpm installed, `tauri build
---no-bundle` produces a self-contained `meetily.exe` (embedded frontend, no localhost
-dependency) that RUNS (verified alive + responding, no :3118 listener). Fixed the fork's
-staged speaker type-error (`null`→`undefined`, commit 32dc563). Winget fixed via
-`--accept-source-agreements`. Build machine is now WIN11, not this VM. Fresh session:
-read whole file, jump to §8/SIGNING or §11/Phase 1b for open ends.
+**Last updated: 2026-10-03** — Phase 2/3 DONE: native diarization pipeline SHIPPED in app
+(commit `aeecd62`) — `src-tauri/src/diarization/` + `apply_speaker_merge` +
+`useRecordingStop.ts` trigger. meetily.exe 42.8MB BUILT + runtime-verified on Win11.
+Prior (2026-10-03): §11 Phase 1b K-estimator VALIDATED (interview K=2 exact via
+silhouette, board ~6→7) + 3.1 config RESOLVED (`config.yaml`, AgglomerativeClustering HAC,
+no autotune/spectral → meetily self-estimates K). Build machine is WIN11 (MSVC 14.44 IS
+installed, contrary to an older stale note). Fresh session: read whole file, jump to
+§11/Phase 2-3 → "Open ends after the shipped integration" for the next-work list.
 
 ---
 
@@ -282,7 +280,12 @@ min_cluster_size=min(12, round(0.1N)) → absorb small into nearest large centro
 machinery, not how 3.1 picks K. Copy of sources in `~/.hermes/cache/scratch/{clustering.py,
 speaker_diarization.py, diarization_utils.py}`.
 
-**Also:** Win11 box = Xeon E3-1270 v6 4c/8t, 32GB, has cargo/rustc but the reinstall WIPED clang/LLVM + MSVC — NOT buildable for pyannote-rs yet (needs bindgen/C++ toolchain). Keep dev builds on this VM; reinstall toolchain on oit only when Phase 4's meetily.exe build needs it.
+**Also (CORRECTED 2026-10-03):** Win11 box = Xeon E3-1270 v6 4c/8t, 32GB. The earlier
+"reinstall WIPED clang/LLVM + MSVC — not buildable" note is now **outdated**: MSVC 14.44
+toolset IS installed (cl.exe at `C:\Program Files (x86)\Microsoft Visual Studio\2022\
+BuildTools\VC\Tools\MSVC\14.44.35207`), rustup stable-msvc + target present, and the
+meetily.exe **release build succeeded on oit** (cargo auto-detects VS via vswhere). Keep
+light dev builds on this VM; full release builds on oit.
 
 ### Tooling note
 yt-dlp (2026.8.19) freshly installed via `~/.hermes/tools/uv-0.12.3-linux-x64/uv tool install yt-dlp`
@@ -310,15 +313,27 @@ yt-dlp (2026.8.19) freshly installed via `~/.hermes/tools/uv-0.12.3-linux-x64/uv
   boundary-biased). **Spectral eigengap reports ~no separation** on cosine-normalized
   wespeaker embeds without pyannote's affinity-refinement port.
 
-**Open ends after Phase 1b:**
-1. Board meeting: K=7 vs truth ~6 — acceptable (reference has no stable count), but if
-   you want tighter, port pyannote's affinity refinement (CropDiagonal/GaussianBlur/
-   RowWiseThreshold/Symmetrize) for the spectral path.
-2. Transcript-bound K (meeting with N utterances) is currently a heuristic
-   `round(sqrt(n))+2, cap 10` — wire real utterance count when integrating into meetily.
-3. Phase 2/3: assemble the full meeting-helper native diarization pipeline (segment →
-   embed → drop<1s → k_estimator's K → cluster → assign), still on this VM (Win11 box has
-   no clang/MSVC after wipe).
+**✅ Phase 2/3 DONE — native pipeline SHIPPED in app (commit `aeecd62`, 2026-10-03):**
+The full pipeline is now wired INTO meetily.exe (no Python sidecar):
+`src-tauri/src/diarization/{models,pipeline,mod}.rs` — downloads both ONNX models
+(pyannote-rs v0.1.0 release artifacts, **no HF token**; verified 200: seg 5.98MB /
+wespeaker 29.3MB, cached in app_data_dir/models/diarization), segment→drop<1s→
+silhouette K→greedy-centroid-HAC-to-K→renumber→chronological segments. `apply_speaker_merge`
+in transcript.rs; frontend trigger in `useRecordingStop.ts` (fires start_diarization with
+folderPath/audio.mp4 + meetingId after saveMeeting). pyannote-rs pinned **0.3.4**
+`features=["load-dynamic"]`; errors are eyre (wrap `.map_err(|e| anyhow!(...))`).
+meetily.exe 42.8MB BUILT on Win11 (verified running 120s+; workspace-root target\release).
+
+**Open ends after the shipped integration (next session):**
+1. Board-meeting K tightening (optional): port pyannote's affinity refinement
+   (CropDiagonal/GaussianBlur/RowWiseThreshold/Symmetrize) for the spectral path — K=7 vs
+   truth ~6 is acceptable otherwise.
+2. Transcript-bound K (meeting with N utterances) is still a heuristic — wire real
+   utterance count if you want it tighter than `round(sqrt(n))+2, cap 10`.
+3. **Runtime E2E on Win11 (NOT yet done):** record a real 2-person clip in the app, confirm
+   transcripts.speaker gets populated after save; watch first-run model download (~35MB).
+4. cargo tauri build (NSIS installer) needs `tauri-cli` installed first (`cargo install
+   tauri-cli`) — plain `cargo build` already yields the runnable exe.
 
 ### UI speaker handling (already built — no new UI work for display + manual rename)
 - Display: speaker field → blue `● SPEAKER_nn` chip (`VirtualizedTranscriptView.tsx:128`).
