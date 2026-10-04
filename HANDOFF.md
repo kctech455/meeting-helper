@@ -2,7 +2,16 @@
 
 > Resume file. Read this to pick up the project without reloading the conversation.
 
-**Last updated: 2026-10-01** — Whisper-rs bump 0.13.2 → 0.16.0; fork now FULLY builds on Win11: Node 22+pnpm installed, `tauri build --no-bundle` produces a self-contained `meetily.exe` (embedded frontend, no localhost dependency) that RUNS (verified alive + responding, no :3118 listener). Fixed the fork's staged speaker type-error (`null`→`undefined`, commit 32dc563). Winget fixed via `--accept-source-agreements`. Build machine is now WIN11, not this VM. Fresh session: read whole file, jump to §8/SIGNING for open ends.
+**Last updated: 2026-10-03** — §11 Phase 1b DONE: `k_estimator` K-estimator VALIDATED
+(interview K=2 exact via silhouette, board ~6→7) + live 3.1 config open item RESOLVED
+(the file is `config.yaml`, clustering = AgglomerativeClustering HAC, no autotune/spectral
+in the runtime → meetily must estimate K itself). Prior (2026-10-01): Whisper-rs bump
+0.13.2 → 0.16.0; fork now FULLY builds on Win11: Node 22+pnpm installed, `tauri build
+--no-bundle` produces a self-contained `meetily.exe` (embedded frontend, no localhost
+dependency) that RUNS (verified alive + responding, no :3118 listener). Fixed the fork's
+staged speaker type-error (`null`→`undefined`, commit 32dc563). Winget fixed via
+`--accept-source-agreements`. Build machine is now WIN11, not this VM. Fresh session:
+read whole file, jump to §8/SIGNING or §11/Phase 1b for open ends.
 
 ---
 
@@ -153,3 +162,166 @@ Working .bat scripts are at `C:\Users\OIT\` on the box and `/home/kc/.hermes/cac
 ## 10. SKILL (procedural memory saved)
 
 `software-development/building-whisper-rs-tauri` — captures: bindgen opaque-struct failure + fix (0.71→0.72), glibc-poisoned shipped-bindings trap, LIBCLANG_PATH/libclang.dll, the .bat-over-SSH remote-build pattern, workspace-level target dir, and the full whisper-rs 0.13→0.16 API map. Load it before any future whisper-rs Windows build.
+
+---
+
+## 11. NEXT WORK: NATIVE RUST DIARIZATION (Option B) — pick up here
+
+**Session goal:** make meetily.exe auto-label speakers post-meeting, fully native (no Python).
+Trigger point CONFIRMED: frontend `useRecordingStop.ts` after `storageService.saveMeeting()` returns
+`meetingId` (L256-262) — that's when meeting + transcripts.json + audio.mp4 all exist. Fire
+`start_diarization({audio_path, meeting_id})` there.
+
+**Complete design:** `/home/kc/myApps/meeting-helper/SCOPE-native-diarization.md`
+(read it first — §8 is the Phase-0 result; §6 has open decisions).
+
+### Phase 0 DE-RISK — PASSED (2026-10-03). Summary:
+- Models NOT license-locked. `pyannote/segmentation-3.0` on HF = **MIT**, gated='auto'
+  (consent form, no fee) — user's HF token unlocks it. `wespeaker` embedding = **Apache-2.0**.
+- **User HF token saved at `~/.hermes/secrets/hf_token` (mode 600, never echo in chat).**
+  Verified auth 200 on segmentation README.
+- Weights also live via screenpipe mirror (seg 5.9MB, wespeaker 29MB, HTTP 200).
+- ⚠️ screenpipe repo = **commercial license (Screenpipe Commercial)** — do NOT copy their CODE.
+  Weights are third-party MIT/Apache, OK to use. **User explicitly wants zero commercial code.**
+
+### ⭐ Shortcut to evaluate FIRST: `thewh1teagle/pyannote-rs` (MIT, ~130★)
+Existing mature Rust pyannote diarization: segmentation-3.0 + wespeaker embeddings on ONNX Runtime,
+sliding-window, knf-rs filterbanks, cosine-similarity speaker compare. **Evaluate adopting this
+as the foundation** before hand-writing the pipeline. Fill gaps using the Python sidecar logic
+(merge overlap from `apply_speakers.py:62` is the proven shape).
+
+### Test video (user-provided, verified download-able via yt-dlp)
+**Board Meeting Example** — https://youtu.be/WBXJEJCsULw?si=joNIvJ2KNwgdDPhX
+  - dur=569s (~9.5min) | uploader "Last Minute Meetings" | multi-speaker board meeting
+  - Longer than the 54s interview (21/21 segments, 100% accurate); good training/test clip.
+
+### ⭐ Phase 1a EVALUATION: pyannote-rs FOUNDATION — PASSED with caveats (2026-10-03)
+**Verdict: adopt as foundation** — MIT, ~130★, builds clean, models verified, 569s PoC works.
+Full eval in `poc-eval-pyannote-rs/` (scratch VM dir) + writeup below.
+
+**Model-source question RESOLVED — there is NO gated ONNX to unlock:**
+- `pyannote/segmentation-3.0` on HF = **pytorch_model.bin only** (resolve segmentation-3.0.onnx → 404
+  even with token). Same for `pyannote/wespeaker-voxceleb-resnet34-LM`.
+- pyannote-rs ships both .onnx as **public GitHub release artifacts** (v0.1.0):
+  `segmentation-3.0.onnx` 5,983,836 B + `wespeaker_en_voxceleb_CAM++.onnx` 29,292,684 B.
+- **Byte-verified**: both sha256 == screenpipe LFS pointers (seg `b78fc48...ba62e`,
+  wespeaker `c46fad1...c54ef`). Release = screenpipe = authoritative, tamper-free.
+- HF token NOT needed for native path (that's the python-sidecar pytorch path only).
+
+**PoC on 569s board meeting** (WBXJEJCsULw, 16k mono resample): ran **~23s (~25x realtime, CPU)**,
+exit 0, 96 segments, 6 distinct speakers. Verified in `target/release/examples/infinite` (max_speakers=6
+example under-detects; `infinite` uses usize::MAX + search_speaker(0.0) fallback → the right pattern).
+
+**⚠️ CAVEATS (why global clustering is MANDATORY, not optional):**
+1. Assignment is **streaming nearest-neighbor** (cosine, threshold 0.5), NOT global clustering.
+   → over-fragmentation: 53/73 runs are single-segment, avg run len 1.3 segs.
+2. Micro-segments = noise: 26 segs <1s; some 0.19s/0.21s "turns" (impossible).
+3. No min-duration merge, no same-speaker-adjacent merge, no max-consecutive fix.
+4. Long under-split: one 43.4s run (433.72→477.17) and 26.7s/25.9s runs — single-speaker span too long.
+Result: S2 owns 208s/569s (37%), plausible, but granularity unusable for per-turn labels as-is.
+**Fix (Phase 1):** keep segmentation + embedding from pyannote-rs, REPLACE EmbeddingManager with global
+clustering (embed all segs → agglomerative/spectral cluster → assign labels), add min-duration + merge
+logic mirroring `apply_speakers.py:62`.
+
+### Phase 1 build env (VM, for dev PoC)
+- **rustup installed on VM** (`~/.cargo/bin`, rustc 1.99.0). Needs `libssl-dev + pkg-config` (openssl-sys).
+- Build: `cargo build --release` (ort 2.0.0-rc.10 pulls onnxruntime prebuilt). ~1m07s.
+- Models must sit where examples look (crate root, relative paths). Audio must be **16k mono** (pyannote
+  standard; 48k stereo → ffmpeg resample/downmix first, boardmeeting_16k_mono.wav 18.2MB 569s).
+- PoC results: `poc-eval-pyannote-rs/poc_results/boardmeeting_pyannote-rs_segments.txt` (96 segs).
+
+### Open item before coding Phase 1
+Gated `pyannote/segmentation-3.0` sibling list shows **no .onnx** — the actual ONNX likely lives in
+a separate gated repo or the screenpipe LFS mirror. Verify exact gated onnx source URL (HF resolve
+with token vs screenpipe LFS) **→ DONE: models = pyannote-rs GH release (== screenpipe LFS), public, no
+token needed.**
+
+### ⭐ Phase 1 RESULT — clustering bottleneck identified (2026-10-03, full writeup in `~/poc-eval-pyannote-rs/PHASE1_FINDINGS.md`)
+Pipeline proven correct in structure, and **embeddings proven accurate — but auto-K (speaker count) is the open problem.**
+
+**What works:** `get_segments()` + `EmbeddingExtractor` + drop<1s turns + K-means = viable on-device diarization (~25x realtime). Board meeting (569s): 6 speakers, 67 segs, 455s, 20.8s. Models verified public, no token.
+
+**DECISIVE validation on the 54s interview (known 21/21 2-speaker truth):**
+- Streaming baseline → 8 speakers (WRONG). Any threshold clustering → 7-8 (WRONG).
+- **Force K=2** → clean 2-person alternating timeline, inter-cluster cosine **-0.171** → embeddings PERFECTLY separate the 2 people.
+- ⇒ The hard part = **auto-estimating K.** No cosine threshold is stable across clips (0.5→6, 0.55→8, 0.6→12 on board meeting). Biggest-jump/gap heuristics also fail (suggested K=10).
+
+**Next (auto-K):** silhouette/gap-statistic/spectral-eigengap, or use the transcript (meeting with N utterances) to bound K, or port the Python sidecar's optimized threshold. Interview embeddings (12 rows, 2 people) already dumped at `~/poc-eval-pyannote-rs/probe_embeddings.tsv` for testing K-estimators against known truth.
+
+### ⭐ Phase 1b DECISION — K-estimator design LOCKED (2026-10-03, fresh session start point)
+
+**Correction that reframes the problem:** our sidecar (`diarize.py:64-66`) has **NO custom threshold** — it passes
+`num_speakers/min_speakers/max_speakers` straight to `pyannote/speaker-diarization-3.1`, so the "optimized threshold"
+we thought we had is a *trained* hyperparameter inside pyannote, not our code. The solved answer = pyannote's clustering
+(`src/pyannote/audio/pipelines/clustering.py`). Key lessons from their source the phase-1 threshold run was MISSING:
+
+1. HAC cut at threshold → split clusters into **large** (≥ `min_cluster_size`, ~0.1×N) vs **small**.
+2. **Re-assign every small cluster to the nearest large cluster by centroid** — this is what collapsed our spurious K.
+3. **Autotune the threshold per file** (`use_autotune=True`): a fixed value is provably unstable (our 0.5→6/0.55→8/0.6→12).
+4. Spectral path (Quan Wang / pyannote PR #995) refines affinity first: `CropDiagonal → GaussianBlur → RowWiseThreshold → Symmetrize`,
+   then Laplacian + **eigengap** (Ratio/NormalizedDiff) for K — but is **poor on short embedding sequences → `spectral_min_embeddings=5` fallback**.
+
+**LOCKED DESIGN (build this next session):** emulate pyannote HAC, per file:
+1. embed turns → **drop <1s** (proven) → cosine affinity → Ward/centroid linkage.
+2. **min_cluster_size prune → absorb orphan clusters into nearest large centroid** (the missing trick).
+3. K = argmax over **gap-statistic** (primary) + **silhouette** (cross-check) on the surviving large clusters,
+   **capped by transcript-distinct-utterance bound and an absolute max (~10)**.
+4. Spectral **eigengap** only as a *fast-path oracle* when the leading gap is decisive AND `n_emb ≥ 5`; else fall back to (3).
+
+**Validation targets (ground truth):** `~/poc-eval-pyannote-rs/probe_embeddings.tsv` → must return **K=2**;
+569s board meeting → expect **~6**. `k_estimator` should be a new Rust example in `poc-eval-pyannote-rs/`.
+
+**✅ Open item RESOLVED (2026-10-03):** fetched the live 3.1 config via curl with the HF
+token. The file is **`config.yaml`**, NOT `pyannote_config.yml`. It declares
+`clustering: AgglomerativeClustering` (HAC — NOT the library's VBx default) with
+`{method: centroid, min_cluster_size: 12, threshold: 0.7045654963945799}`, and **no
+`use_autotune`**. The 3.1 `AgglomerativeClustering.cluster()` (MIT, src/pyannote/audio/
+pipelines/clustering.py) does: unit-normalize → linkage(centroid,euclidean) → fcluster →
+min_cluster_size=min(12, round(0.1N)) → absorb small into nearest large centroid → renumber.
+**autotune/spectral-eigengap are NOT in the shipped runtime path** — they're legacy trainer
+machinery, not how 3.1 picks K. Copy of sources in `~/.hermes/cache/scratch/{clustering.py,
+speaker_diarization.py, diarization_utils.py}`.
+
+**Also:** Win11 box = Xeon E3-1270 v6 4c/8t, 32GB, has cargo/rustc but the reinstall WIPED clang/LLVM + MSVC — NOT buildable for pyannote-rs yet (needs bindgen/C++ toolchain). Keep dev builds on this VM; reinstall toolchain on oit only when Phase 4's meetily.exe build needs it.
+
+### Tooling note
+yt-dlp (2026.8.19) freshly installed via `~/.hermes/tools/uv-0.12.3-linux-x64/uv tool install yt-dlp`
+→ lands at `~/.local/bin/yt-dlp` (may need `export PATH=$HOME/.local/bin:$PATH`). ffmpeg at
+`~/.hermes/tools/ffmpeg-9.0.1-linux-x64`.
+
+### ✅ Phase 1b DONE — k_estimator VALIDATED (2026-10-03)
+`examples/k_estimator.rs` built + run against both ground-truth targets (full writeup in
+`~/poc-eval-pyannote-rs/PHASE1_FINDINGS.md` §7):
+
+| dataset | n_emb | truth | K_ESTIMATED | source |
+|---|---|---|---|---|
+| `probe_interview.tsv` (54s interview) | 12 | **2** | **2** | silhouette decisive peak (k=2:0.407 vs 0.295) |
+| `probe_board_meeting.tsv` (569s board) | 70 | ~6 | 7 | silhouette plateau 6-7 (0.373/0.394) |
+
+**What the live 3.1 source proved (corrects our earlier lock):**
+- pyannote file is **`config.yaml`**, not `pyannote_config.yml`; clustering is
+  **AgglomerativeClustering** (HAC centroid, thresh 0.7046, min_cluster_size 12), NOT the
+  library's VBx default.
+- 3.1's runtime has **NO autotune / no spectral-eigengap K-selection** — those are legacy
+  `pyannote.pipeline` trainer features. The runtime only: cut at the fixed threshold →
+  prune + absorb, then respects user-supplied num_speakers bounds.
+- ⇒ meetily MUST estimate K itself. **Silhouette is the reliable estimator** here
+  (nails interview, 6-7 on board). **Gap-statistic is degenerate with n<<dim** (monotone/
+  boundary-biased). **Spectral eigengap reports ~no separation** on cosine-normalized
+  wespeaker embeds without pyannote's affinity-refinement port.
+
+**Open ends after Phase 1b:**
+1. Board meeting: K=7 vs truth ~6 — acceptable (reference has no stable count), but if
+   you want tighter, port pyannote's affinity refinement (CropDiagonal/GaussianBlur/
+   RowWiseThreshold/Symmetrize) for the spectral path.
+2. Transcript-bound K (meeting with N utterances) is currently a heuristic
+   `round(sqrt(n))+2, cap 10` — wire real utterance count when integrating into meetily.
+3. Phase 2/3: assemble the full meeting-helper native diarization pipeline (segment →
+   embed → drop<1s → k_estimator's K → cluster → assign), still on this VM (Win11 box has
+   no clang/MSVC after wipe).
+
+### UI speaker handling (already built — no new UI work for display + manual rename)
+- Display: speaker field → blue `● SPEAKER_nn` chip (`VirtualizedTranscriptView.tsx:128`).
+- Manual rename: click chip → inline input → "John"/"Sue" → Enter → persists
+  (UI:VTV:159 → hook:usePaginatedTranscripts.ts:207 → cmd:api.rs:1015 → SQL:transcript.rs:109).
+- **GAP (new, ~1-2d):** batch rename "rename SPEAKER_00 everywhere" — no `api_rename_speaker(meeting_id, from, to)` yet.
