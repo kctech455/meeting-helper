@@ -335,6 +335,27 @@ meetily.exe 42.8MB BUILT on Win11 (verified running 120s+; workspace-root target
 4. cargo tauri build (NSIS installer) needs `tauri-cli` installed first (`cargo install
    tauri-cli`) — plain `cargo build` already yields the runnable exe.
 
+### ✅ SIGNED INSTALLERS BUILT (2026-10-05) — updater keypair + own repo
+- Generated minisign keypair on box: `.tauri/meetily.key` (private) + `.tauri/meetily.key.pub` (public).
+  Committed the NEW pubkey into `tauri.conf.json plugins.updater.pubkey` and repointed
+  `endpoints` to `github.com/kctech455/meeting-helper/releases/latest/download/latest.json`
+  (commit `18ac436`). Root `.gitignore` now excludes `frontend/src-tauri/.tauri/` + `frontend/.env`
+  (commit `8ed31b1`) — protect the private key.
+- Build env: `.env` (gitignored, on box) holds `TAURI_SIGNING_PRIVATE_KEY` (raw 348-char key) +
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Loaded into process env by PowerShell script
+  `C:\Users\OIT\source_build.ps1` (cmd `set` vars do NOT propagate to tauri build; PS does).
+- Output (all signed with the minisign key, verify with the .sig sidecars):
+  - `target\release\bundle\nsis\meetily_0.4.1_x64-setup.exe` (42 MB) — recommended for 2nd machine
+  - `target\release\bundle\msi\meetily_0.4.1_x64_en-US.msi` (70 MB) + both `.sig`
+  - Both are SELF-CONTAINED: bundle ffmpeg.exe (99MB), llama-helper, onnxruntime.dll, frontend.
+- Installers mirrored on VM at `/home/kc/myApps/meeting-helper/dist/` for copying to another PC.
+- NOTE: `sign-windows.ps1` skips Authenticode (no `DIGICERT_KEYPAIR_ALIAS`) → SmartScreen may warn.
+  Future: use SignPath Foundation (free OSS code signing, signpath.org/apply.html) for a trusted
+  signature that avoids the SmartScreen warning. See `building-whisper-rs-tauri` skill.
+- The full build runs `beforeBuildCommand pnpm build` then bundles — rebuild on the box with
+  `powershell -File C:\Users\OIT\source_build.ps1` (which loads .env first). KILL meetily before
+  building (os error 32 if running/locked).
+
 ### UI speaker handling (already built — no new UI work for display + manual rename)
 - Display: speaker field → blue `● SPEAKER_nn` chip (`VirtualizedTranscriptView.tsx:128`).
 - Manual rename: click chip → inline input → "John"/"Sue" → Enter → persists
