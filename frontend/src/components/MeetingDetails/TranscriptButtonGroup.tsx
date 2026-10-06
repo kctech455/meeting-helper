@@ -3,7 +3,9 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, FolderOpen, RefreshCw, Users } from 'lucide-react';
+import { Copy, FolderOpen, RefreshCw, Users, Mic, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
 import Analytics from '@/lib/analytics';
 import { RetranscribeDialog } from './RetranscribeDialog';
 import { RenameSpeakerDialog } from './RenameSpeakerDialog';
@@ -44,6 +46,27 @@ export function TranscriptButtonGroup({
       await onRefetchTranscripts();
     }
   }, [onRefetchTranscripts]);
+
+  // Manual speaker-diarization trigger (same command the recorder auto-fires post-save).
+  const [isDiarizing, setIsDiarizing] = useState(false);
+  const handleRunDiarization = useCallback(async () => {
+    if (!meetingId || !meetingFolderPath || isDiarizing) return;
+    const audioPath = `${meetingFolderPath}/audio.mp4`;
+    setIsDiarizing(true);
+    Analytics.trackButtonClick('run_diarization', 'meeting_details');
+    toast.info('Speaker diarization started…');
+    try {
+      const res: string = await invoke('start_diarization', { audioPath, meetingId });
+      toast.success(res || 'Speaker labels applied');
+      await onRefetchTranscripts?.();
+    } catch (err) {
+      console.error('Diarization failed:', err);
+      toast.error(`Diarization failed: ${err}`);
+      // The auto-trigger is silent on failure — surface it here so it's visible.
+    } finally {
+      setIsDiarizing(false);
+    }
+  }, [meetingId, meetingFolderPath, isDiarizing, onRefetchTranscripts]);
 
   return (
     <div className="flex items-center justify-center w-full gap-2">
@@ -111,6 +134,24 @@ export function TranscriptButtonGroup({
           >
             <Users className="@[22rem]:mr-2" size={18} />
             <span className="hidden @[22rem]:inline">Speakers</span>
+          </Button>
+        )}
+
+        {meetingId && meetingFolderPath && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="px-2 @[22rem]:px-4"
+            onClick={() => void handleRunDiarization()}
+            disabled={isDiarizing}
+            title={isDiarizing ? 'Diarizing…' : 'Run speaker diarization on this recording'}
+          >
+            {isDiarizing ? (
+              <Loader2 className="@[22rem]:mr-2 animate-spin" size={18} />
+            ) : (
+              <Mic className="@[22rem]:mr-2" size={18} />
+            )}
+            <span className="hidden @[22rem]:inline">{isDiarizing ? 'Diarizing…' : 'Diarize'}</span>
           </Button>
         )}
       </ButtonGroup>
