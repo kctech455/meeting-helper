@@ -533,3 +533,53 @@ fn cluster_to_k(embs: &[Vec<f32>], k: usize) -> Vec<usize> {
     }
     label
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reproduction (2026-10-06): the REAL in-app pipeline against a real
+    /// multi-minute recording the user reported ("starts then says No speakers
+    /// detected"), decoded to 16k mono i16 exactly as decode_to_16k_i16 does.
+    /// BEFORE the pyannote-rs get_segments fix in segment.rs, run_pipeline
+    /// returned empty (0 segments) because the iterator died after the silent
+    /// first 10s window. AFTER the fix it must produce speaker segments.
+    ///
+    /// Dev-only: paths come from env vars, defaulting to the original repro
+    /// assets on the dev VM. The test SKIPS when the audio file is absent so it
+    /// never hard-fails a clean checkout (models download at app runtime, so the
+    /// onnx files are not expected in a fresh clone). Run locally with, e.g.:
+    ///   MEETILY_TEST_WAV=/path/to/meeting_16k.wav \
+    ///   ORT_DYLIB_PATH=/path/to/libonnxruntime.so \
+    ///   cargo test -p meetily --lib run_pipeline_on_real_speech_wav -- --nocapture
+    #[test]
+    fn run_pipeline_on_real_speech_wav() {
+        let wav = std::env::var("MEETILY_TEST_WAV")
+            .unwrap_or_else(|_| "/home/kc/Downloads/meeting_16k.wav".into());
+        if !std::path::Path::new(&wav).exists() {
+            eprintln!("SKIP: repro audio not present ({wav}) — dev-only test");
+            return;
+        }
+        // Set ORT_DYLIB_PATH so load-dynamic finds libonnxruntime in a unit-test
+        // context (the app sets it at runtime via bundled binaries).
+        if std::env::var_os("ORT_DYLIB_PATH").is_none() {
+            // fall back to a known local .so (dev/test only)
+            std::env::set_var("ORT_DYLIB_PATH",
+                "/home/kc/.hermes/hermes-agent/venv/lib/python3.11/site-packages/onnxruntime/capi/libonnxruntime.so.1.28.0");
+        }
+        let models_dir = std::env::var("MEETILY_TEST_MODELS_DIR")
+            .unwrap_or_else(|_| "/home/kc/poc-eval-pyannote-rs/models".into());
+        let seg = format!("{models_dir}/segmentation-3.0.onnx");
+        let emb = format!("{models_dir}/wespeaker_en_voxceleb_CAM++.onnx");
+        let (samples, sample_rate) = pyannote_rs::read_wav(&wav).expect("read wav");
+        eprintln!("loaded wav: {} samples @ {}Hz", samples.len(), sample_rate);
+
+        let out = run_pipeline(&samples, sample_rate, &seg, &emb).expect("pipeline ok");
+        eprintln!("RESULT: {} labeled segments produced", out.len());
+        for s in &out {
+            print!("{:.2}-{:.2} {}", s.start, s.end, s.speaker);
+        }
+        println!();
+        assert!(!out.is_empty(), "pipeline returned NO speakers on real speech audio");
+    }
+}

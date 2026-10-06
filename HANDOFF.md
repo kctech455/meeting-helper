@@ -2,20 +2,79 @@
 
 > Resume file. Read this to pick up the project without reloading the conversation.
 
-**Last updated: 2026-10-03** — Phase 2/3 DONE: native diarization pipeline SHIPPED in app
-(commit `aeecd62`) — `src-tauri/src/diarization/` + `apply_speaker_merge` +
-`useRecordingStop.ts` trigger. meetily.exe 42.8MB BUILT + runtime-verified on Win11.
-Prior (2026-10-03): §11 Phase 1b K-estimator VALIDATED (interview K=2 exact via
-silhouette, board ~6→7) + 3.1 config RESOLVED (`config.yaml`, AgglomerativeClustering HAC,
-no autotune/spectral → meetily self-estimates K). Build machine is WIN11 (MSVC 14.44 IS
-installed, contrary to an older stale note). Fresh session: read whole file, jump to
-§11/Phase 2-3 → "Open ends after the shipped integration" for the next-work list.
+**Last updated: 2026-10-06** — ⭐ DIARIZATION FIX APPLIED, REBUILD REQUIRED ON WIN11.
+Meetily's native diarization reported "No speakers detected" instantly on multi-minute
+meetings. Root cause: upstream `pyannote-rs 0.3.4` `get_segments()` iterator bug (see
+§1B/REBUILD-NOW below) — fixed locally and patched into the app. **A fresh session should
+REBUILD meetily.exe on the Win11 box so the fix ships** (verified in unit test on this VM:
+the user's real 480s meeting now yields 64 speaker segments; prior §11 Phase 2/3 diarization
+shipped 2026-10-03 commit `aeecd62`; K-estimator VALIDATED interview K=2 exact, board ~6→7;
+build machine WIN11 MSVC 14.44 IS installed). Fresh session: read the whole file, START with
+**§1B "REBUILD NOW"**, then §6B Win11 build pipeline, then §11 open ends.
 
 ---
 
 ## 1. ONE-LINE STATUS
 
 The staged fork (`kctech455/meeting-helper`) — specifically the `update_transcript_speaker` Tauri command, per-person `speaker` field plumbing, and rename UI — **compiles and builds on the Win11 box with a real Rust toolchain**. This was the piece the original handoff flagged as *"unverifiable without a Rust toolchain."* The hard blocker (bindgen opaque `whisper_full_params` on MSVC) is solved, not worked around. Release binary exists and is verified.
+
+---
+
+## 1B. 🔥 REBUILD NOW — diarization fix must ship to Win11 (2026-10-06)
+
+**What the end user saw:** clicking "Start speaker diarization" on a recorded meeting
+started then *instantly* returned **"No speakers detected"** — even though the recording
+had clear speech. Fixed locally on the VM; **the fix is NOT yet in any built meetily.exe → a
+fresh session must rebuild on the Win11 box before it reaches users.**
+
+**The bug (upstream `pyannote-rs 0.3.4` `segment.rs::get_segments`):** the iterator advanced
+to the next 10s window on *every* closure invocation then returned
+`segments_queue.pop_front()`. When a window produced **zero** segments (a silent opening 10s
+of a multi-minute recording — exactly how real meetings start), the next `pop_front()`
+returned `None`, terminating the whole iterator → all later speech windows skipped →
+`run_pipeline` returned empty → "no speakers detected". Short clips (54s interview, 40s
+`6_speakers.wav`) escaped only because their first window had speech.
+
+**The fix:** decoupled window advancement from segment-queue draining — drain buffered
+segments first, advance to next window only when the queue is empty, end at last window.
+Also wrapped the ORT session in `Option` so it outlives the loop. Applied via
+`[patch.crates-io]` in root `Cargo.toml` → `pyannote-rs = { path = "/home/kc/poc-eval-pyannote-rs" }`.
+
+**Verified on the VM (unit test against the user's REAL 480s meeting file):**
+| input | before | after |
+|---|---|---|
+| user's 480s meeting (`audio.mp4`, RMS −19.8 dB) | 0 segments → "No speakers" | **64 speaker-labeled segments** (SPEAKER_00/01/02/03) |
+| `6_speakers.wav` (regression) | 8 segments | 7 segments (unchanged) |
+
+**Exact rebuild steps for the fresh session (Win11 box `oit@10.141.9.147`, clone
+`C:\Users\OIT\meeting-helper-build`):**
+1. **Pull/deploy the changes** — files changed: root `Cargo.toml` (+`[patch.crates-io]`,
+   now RELATIVE), `Cargo.lock`, `frontend/src-tauri/vendor/pyannote-rs/` (fixed crate,
+   VENDORED — Option A below), `frontend/src-tauri/src/diarization/pipeline.rs` (+repro
+   unit test, now env-driven), `HANDOFF.md`. ✅ The patch path is now repo-relative, so a
+   plain `git pull` on the box resolves it — NO manual vendoring needed.
+2. `powershell -File C:\Users\OIT\source_build.ps1` (loads `.env` signing vars first).
+   KILL any running meetily first (`os error 32` if locked).
+3. Confirm the fix works: record a real multi-minute meeting in the app → diarization should
+   now produce speaker labels instead of "No speakers detected".
+
+**Patch portability — RESOLVED via Option A (2026-10-06):** the fixed pyannote-rs workspace
+is VENDORED into the repo at `frontend/src-tauri/vendor/pyannote-rs/` (pyannote-rs 0.3.4 +
+its knf-rs/knf-rs-sys path deps + the kaldi-native-fbank `knf` C++ submodule, ~668K source).
+Root `Cargo.toml` `[patch.crates-io]` points at the RELATIVE path
+`path = "frontend/src-tauri/vendor/pyannote-rs"` — relative to the workspace root, so BOTH
+the VM and Win11 resolve identically. Cargo.lock reflects this (pyannote-rs/knf-rs/knf-rs-sys
+now path-resolved, no registry checksum — expected). Old per-session options:
+- ~~(A) hand-vendor each box~~ → DONE: vendored in-repo, self-contained.
+- ~~(B) copy segment.rs over registry cache~~ — no longer needed.
+- (C) push fix upstream / bump version, then delete the vendor dir + patch (still best
+  long-term).
+
+**Repro/regression harness (in repo, dev-only):** `cargo test -p meetily --lib run_pipeline_on_real_speech_wav`
+— now env-driven with SKIP semantics: reads `MEETILY_TEST_WAV` (default `/home/kc/Downloads/meeting_16k.wav`),
+`MEETILY_TEST_MODELS_DIR` (default `/home/kc/poc-eval-pyannote-rs/models`), `ORT_DYLIB_PATH`
+(default the dev VM's local onnxruntime .so). Silently SKIPs when the audio file is absent —
+no hard-fail on a clean clone (models download at app runtime, not in a fresh checkout).
 
 ---
 
@@ -220,6 +279,34 @@ Result: S2 owns 208s/569s (37%), plausible, but granularity unusable for per-tur
 **Fix (Phase 1):** keep segmentation + embedding from pyannote-rs, REPLACE EmbeddingManager with global
 clustering (embed all segs → agglomerative/spectral cluster → assign labels), add min-duration + merge
 logic mirroring `apply_speakers.py:62`.
+
+### ⭐ FIX SHIPPED (2026-10-06): `get_segments` iterator bug → "No speakers detected"
+**Symptoms (user report):** clicking "Start speaker diarization" on a recorded meeting
+started then *immediately* returned "No speakers detected", even though the recording
+had clear speech (measured RMS −19.8 dB, 480s).
+
+**Root cause — upstream `pyannote-rs 0.3.4` `segment.rs::get_segments`:**
+The iterator advanced to the next 10s window on **every** closure invocation, then
+returned `segments_queue.pop_front()`. If a window produced **zero** segments (e.g. a
+silent opening 10s of a longer recording), the very next `pop_front()` returned `None`,
+terminating the whole iterator — so all later windows (full of speech) were skipped and
+`run_pipeline` returned an empty `Vec` → the app printed "no speakers detected".
+
+Short recordings (54s interview, 40s `6_speakers.wav`) escaped it only because their
+first window had speech. Any meeting whose first 10s is quiet hit the bug.
+
+**Fix** (in the vendored/patch source, `segment.rs`): decoupled window advancement from
+segment-queue draining — the closure now drains buffered segments first, and only
+advances to the next window when the queue is empty (or ends at the last window). Also
+wrapped the ORT session in an `Option` so it outlives the loop.
+
+**Verified:** the actual 480s meeting file the user reported now yields **64 speaker-
+labeled segments** (SPEAKER_00/01/02/03) via `run_pipeline` — before the fix it returned
+0. Regression: `6_speakers.wav` still yields 7 segments. Applied via `[patch.crates-io]`
+in root `Cargo.toml` → `path = /home/kc/poc-eval-pyannote-rs` (local fixed source); the
+app must keep this patch until upstream ships the fix. Reproducing unit test:
+`cargo test -p meetily --lib run_pipeline_on_real_speech_wav` (needs `ORT_DYLIB_PATH`
+set to a `libonnxruntime*.so`; dev-only path hardcoded in the test).
 
 ### Phase 1 build env (VM, for dev PoC)
 - **rustup installed on VM** (`~/.cargo/bin`, rustc 1.99.0). Needs `libssl-dev + pkg-config` (openssl-sys).

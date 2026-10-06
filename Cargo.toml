@@ -16,3 +16,15 @@ anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.32.0", features = ["full"] }
+
+# =============================================================================
+# Local patch: pyannote-rs 0.3.4 (crates.io upstream) had a bug where the
+# `get_segments` iterator terminated after the FIRST window whenever that window
+# produced zero segments (e.g. a silent opening 10s of a longer recording), so
+# all later windows — including speech — were skipped and diarization reported
+# "No speakers detected". Fixed locally by decoupling window advancement from
+# segment queue draining (see segment.rs in the vendored source). The app must
+# keep this patch until upstream ships the fix.
+# =============================================================================
+[patch.crates-io]
+pyannote-rs = { path = "frontend/src-tauri/vendor/pyannote-rs" }
