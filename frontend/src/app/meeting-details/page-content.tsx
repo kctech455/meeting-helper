@@ -29,7 +29,8 @@ export default function PageContent({
   onRefetchTranscripts,
   onRenameSpeaker,
   speakerLabels,
-  // Pagination props for efficient transcript loading
+  onUpdateSpeaker,
+  // Pagination props
   segments,
   hasMore,
   isLoadingMore,
@@ -47,6 +48,9 @@ export default function PageContent({
   // Batch speaker rename props
   onRenameSpeaker?: (from: string, to: string) => Promise<number | null>;
   speakerLabels?: string[];
+
+  // Per-segment speaker rename (inline chip on each segment)
+  onUpdateSpeaker?: (transcriptId: string, speaker: string | null) => Promise<boolean>;
   // Pagination props
   segments?: any[];
   hasMore?: boolean;
@@ -225,6 +229,7 @@ export default function PageContent({
               onRefetchTranscripts={onRefetchTranscripts}
               onRenameSpeaker={onRenameSpeaker}
               speakerLabels={speakerLabels}
+              onUpdateSpeaker={onUpdateSpeaker}
             />
           }
           summary={

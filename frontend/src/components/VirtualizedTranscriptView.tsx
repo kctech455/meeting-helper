@@ -66,6 +66,32 @@ function cleanStopWords(text: string): string {
     return cleanedText.replace(/\s+/g, ' ').trim();
 }
 
+// Stable per-speaker palette: indexed by label hash so each speaker keeps one
+// color across the whole meeting (SPEAKER_00 -> blue, SPEAKER_01 -> green, etc.).
+const SPEAKER_PALETTE = [
+    { bg: '#DBEAFE', fg: '#1E40AF', dot: '#3B82F6' }, // blue
+    { bg: '#DCFCE7', fg: '#166534', dot: '#22C55E' }, // green
+    { bg: '#FEE2E2', fg: '#991B1B', dot: '#EF4444' }, // red
+    { bg: '#FEF3C7', fg: '#92400E', dot: '#F59E0B' }, // amber
+    { bg: '#E9D5FF', fg: '#6B21A8', dot: '#A855F7' }, // purple
+    { bg: '#FCE7F3', fg: '#9D174D', dot: '#EC4899' }, // pink
+    { bg: '#CCFBF1', fg: '#115E59', dot: '#14B8A6' }, // teal
+    { bg: '#FFEDD5', fg: '#9A3412', dot: '#F97316' }, // orange
+    { bg: '#E0E7FF', fg: '#3730A3', dot: '#6366F1' }, // indigo
+    { bg: '#F3E8FF', fg: '#7E22CE', dot: '#9333EA' }, // violet
+];
+
+function speakerColor(label: string) {
+    // Stable FNV-style hash so a renamed label keeps the same color too.
+    let hash = 2166136261;
+    for (let i = 0; i < label.length; i++) {
+        hash ^= label.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    const idx = (hash >>> 0) % SPEAKER_PALETTE.length;
+    return SPEAKER_PALETTE[idx];
+}
+
 // Memoized transcript segment component
 const TranscriptSegment = memo(function TranscriptSegment({
     id,
@@ -108,6 +134,12 @@ const TranscriptSegment = memo(function TranscriptSegment({
     };
 
     const label = speaker && speaker.trim() !== '' ? speaker : null;
+    // Show a speaker header whenever we have a label, OR the segment is assignable
+    // (rename callback present). Read-only segments without a label stay clean.
+    const showSpeakerHeader = label !== null || !!onUpdateSpeaker;
+    const color = label ? speakerColor(label) : null;
+    const chipStyle = color ? { backgroundColor: color.bg, color: color.fg } : undefined;
+    const dotStyle = color ? { backgroundColor: color.dot } : undefined;
 
     return (
         <div id={`segment-${id}`} className="mb-3">
@@ -125,9 +157,12 @@ const TranscriptSegment = memo(function TranscriptSegment({
                     </TooltipContent>
                 </Tooltip>
                 <div className="flex-1">
-                    {/* Speaker label chip (click to rename) */}
-                    {onUpdateSpeaker && (
-                        <div className="mb-1">
+                    {/* Speaker header line: colored chip above the text, click to rename */}
+                    {showSpeakerHeader && (
+                        <div
+                            className="mb-1 pl-1.5 border-l-2"
+                            style={{ borderColor: color ? color.dot : '#D1D5DB' }}
+                        >
                             {editingSpeaker ? (
                                 <span className="inline-flex items-center gap-1">
                                     <input
@@ -155,19 +190,25 @@ const TranscriptSegment = memo(function TranscriptSegment({
                                         Cancel
                                     </button>
                                 </span>
-                            ) : (
+                            ) : onUpdateSpeaker ? (
                                 <button
                                     onClick={() => { setEditingSpeaker(true); setSpeakerDraft(speaker ?? ''); }}
                                     title={label ? 'Click to rename speaker' : 'Click to assign speaker'}
                                     className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                                         label
-                                            ? 'bg-blue-50 text-blue-800 hover:bg-blue-100'
+                                            ? 'hover:opacity-80'
                                             : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                                     }`}
+                                    style={chipStyle}
                                 >
-                                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                                    <span className="w-2 h-2 rounded-full inline-block" style={dotStyle} />
                                     {label ?? 'Speaker'}
                                 </button>
+                            ) : (
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${label ? '' : 'bg-gray-100 text-gray-500'}`} style={chipStyle}>
+                                    <span className="w-2 h-2 rounded-full inline-block" style={dotStyle} />
+                                    {label ?? 'Speaker'}
+                                </span>
                             )}
                         </div>
                     )}
@@ -198,6 +239,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
     totalCount = 0,
     loadedCount = 0,
     onLoadMore,
+    onUpdateSpeaker,
 }) => {
     // Create scroll ref first - shared between virtualizer and auto-scroll hook
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -368,8 +410,10 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         timestamp={segment.timestamp}
                                         text={getDisplayText(segment)}
                                         confidence={segment.confidence}
+                                        speaker={segment.speaker}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
+                                        onUpdateSpeaker={onUpdateSpeaker}
                                     />
                                 </div>
                             );
@@ -424,8 +468,10 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         timestamp={segment.timestamp}
                                         text={getDisplayText(segment)}
                                         confidence={segment.confidence}
+                                        speaker={segment.speaker}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
+                                        onUpdateSpeaker={onUpdateSpeaker}
                                     />
                                 </motion.div>
                             );

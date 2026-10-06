@@ -133,7 +133,7 @@ export function TranscriptButtonGroup({
             }
           >
             <Users className="@[22rem]:mr-2" size={18} />
-            <span className="hidden @[22rem]:inline">Speakers</span>
+            <span className="hidden @[22rem]:inline">Relabel</span>
           </Button>
         )}
 

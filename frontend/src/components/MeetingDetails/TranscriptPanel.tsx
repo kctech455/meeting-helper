@@ -32,6 +32,9 @@ interface TranscriptPanelProps {
   // Batch speaker rename props
   onRenameSpeaker?: (from: string, to: string) => Promise<number | null>;
   speakerLabels?: string[];
+
+  // Per-segment speaker rename (inline chip on each segment)
+  onUpdateSpeaker?: (transcriptId: string, speaker: string | null) => Promise<boolean>;
 }
 
 export function TranscriptPanel({
@@ -54,6 +57,7 @@ export function TranscriptPanel({
   onRefetchTranscripts,
   onRenameSpeaker,
   speakerLabels,
+  onUpdateSpeaker,
 }: TranscriptPanelProps) {
   // Convert transcripts to segments if pagination is not used but we want virtualization
   const convertedSegments = useMemo(() => {
@@ -67,6 +71,7 @@ export function TranscriptPanel({
       endTime: t.audio_end_time,
       text: t.text,
       confidence: t.confidence,
+      speaker: t.speaker,
     }));
   }, [transcripts, usePagination, segments]);
 
@@ -102,6 +107,7 @@ export function TranscriptPanel({
           totalCount={totalCount}
           loadedCount={loadedCount}
           onLoadMore={onLoadMore}
+          onUpdateSpeaker={onUpdateSpeaker}
         />
       </div>
 
