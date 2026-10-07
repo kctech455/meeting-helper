@@ -1,6 +1,6 @@
 # Future Roadmap
 
-A queue of deliberate, well-scoped improvement tasks for the Meetily fork. Each entry
+A queue of deliberate, well-scoped improvement tasks for the Track fork. Each entry
 is written so a future session can pick it up cold (with the `building-whisper-rs-tauri`
 skill context) and execute it safely. Work off this file when it's referenced; do not
 apply ad-hoc "recommended diffs" without re-validating them against the live source.
@@ -12,7 +12,7 @@ apply ad-hoc "recommended diffs" without re-validating them against the live sou
 **Why it matters.** API keys (OpenAI, Anthropic/Groq, OpenRouter, Ollama, Custom OpenAI)
 are currently stored **plaintext in the SQLite database** (`database/models.rs` `Setting`
 struct; written via `database/repositories/setting.rs`). The DB file lives in
-`~/.config/Meetily/` (Linux/macOS) or `%APPDATA%\Meetily\` (Windows), protected only by
+`~/.config/Track/` (Linux/macOS) or `%APPDATA%\Track\` (Windows), protected only by
 OS file permissions. A backup, a shared-profile machine, or a compromise of the app-data
 dir leaks every key. This is the single highest-value privacy hardening on the roadmap.
 
@@ -38,7 +38,7 @@ spec below — not from that old diff.
    selection. Do NOT hardcode a single platform crate; gate platform backends behind
    `#[cfg(target_os = ...)]` where needed.
 2. **Service/namespace strategy:** use one service name per provider, e.g.
-   `Meetily-<provider>` (and `Meetily-transcript-<provider>` for the transcript keys,
+   `Track-<provider>` (and `Track-transcript-<provider>` for the transcript keys,
    which are currently separate columns in `transcript_settings`). Two distinct
    namespaces: summary keys and transcript keys.
 3. **Empty-string placeholder trap:** never write `""` to the DB "for compatibility."

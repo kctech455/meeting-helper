@@ -1,8 +1,8 @@
-# Meetily Security Scan & Architecture Review
+# Track Security Scan & Architecture Review
 
 ## Executive Summary
 
-This document provides a comprehensive security review and architectural analysis of the Meetily Tauri desktop application. The review covers the Rust backend, audio processing pipeline, database layer, and LLM integration components.
+This document provides a comprehensive security review and architectural analysis of the Track Tauri desktop application. The review covers the Rust backend, audio processing pipeline, database layer, and LLM integration components.
 
 ### Key Findings at a Glance
 
@@ -70,7 +70,7 @@ pub struct Setting {
 
 **Analysis**:
 - Keys are stored as plain text in SQLite
-- Database file is in `~/.config/Meetily/` (macOS/Linux) or `%APPDATA%/Meetily/` (Windows)
+- Database file is in `~/.config/Track/` (macOS/Linux) or `%APPDATA%/Track/` (Windows)
 - These locations are protected by OS user permissions
 - No encryption layer between the app and database
 
@@ -611,7 +611,7 @@ match WhisperCompiledBackend::current() {
 
 ## 9. Conclusion
 
-The Meetily application demonstrates good security practices with:
+The Track application demonstrates good security practices with:
 - Proper use of parameterized SQL queries
 - PII sanitization in analytics
 - HTTPS for all external API calls

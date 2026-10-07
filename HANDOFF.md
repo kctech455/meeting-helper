@@ -3,10 +3,10 @@
 > Resume file. Read this to pick up the project without reloading the conversation.
 
 **Last updated: 2026-10-06** — ⭐ DIARIZATION FIX APPLIED, REBUILD REQUIRED ON WIN11.
-Meetily's native diarization reported "No speakers detected" instantly on multi-minute
+Track's native diarization reported "No speakers detected" instantly on multi-minute
 meetings. Root cause: upstream `pyannote-rs 0.3.4` `get_segments()` iterator bug (see
 §1B/REBUILD-NOW below) — fixed locally and patched into the app. **A fresh session should
-REBUILD meetily.exe on the Win11 box so the fix ships** (verified in unit test on this VM:
+REBUILD track.exe on the Win11 box so the fix ships** (verified in unit test on this VM:
 the user's real 480s meeting now yields 64 speaker segments; prior §11 Phase 2/3 diarization
 shipped 2026-10-03 commit `aeecd62`; K-estimator VALIDATED interview K=2 exact, board ~6→7;
 build machine WIN11 MSVC 14.44 IS installed). Fresh session: read the whole file, START with
@@ -24,7 +24,7 @@ The staged fork (`kctech455/meeting-helper`) — specifically the `update_transc
 
 **What the end user saw:** clicking "Start speaker diarization" on a recorded meeting
 started then *instantly* returned **"No speakers detected"** — even though the recording
-had clear speech. Fixed locally on the VM; **the fix is NOT yet in any built meetily.exe → a
+had clear speech. Fixed locally on the VM; **the fix is NOT yet in any built track.exe → a
 fresh session must rebuild on the Win11 box before it reaches users.**
 
 **The bug (upstream `pyannote-rs 0.3.4` `segment.rs::get_segments`):** the iterator advanced
@@ -54,7 +54,7 @@ Also wrapped the ORT session in `Option` so it outlives the loop. Applied via
    unit test, now env-driven), `HANDOFF.md`. ✅ The patch path is now repo-relative, so a
    plain `git pull` on the box resolves it — NO manual vendoring needed.
 2. `powershell -File C:\Users\OIT\source_build.ps1` (loads `.env` signing vars first).
-   KILL any running meetily first (`os error 32` if locked).
+   KILL any running track first (`os error 32` if locked).
 3. Confirm the fix works: record a real multi-minute meeting in the app → diarization should
    now produce speaker labels instead of "No speakers detected".
 
@@ -70,9 +70,9 @@ now path-resolved, no registry checksum — expected). Old per-session options:
 - (C) push fix upstream / bump version, then delete the vendor dir + patch (still best
   long-term).
 
-**Repro/regression harness (in repo, dev-only):** `cargo test -p meetily --lib run_pipeline_on_real_speech_wav`
-— now env-driven with SKIP semantics: reads `MEETILY_TEST_WAV` (default `/home/kc/Downloads/meeting_16k.wav`),
-`MEETILY_TEST_MODELS_DIR` (default `/home/kc/poc-eval-pyannote-rs/models`), `ORT_DYLIB_PATH`
+**Repro/regression harness (in repo, dev-only):** `cargo test -p track --lib run_pipeline_on_real_speech_wav`
+— now env-driven with SKIP semantics: reads `TRACK_TEST_WAV` (default `/home/kc/Downloads/meeting_16k.wav`),
+`TRACK_TEST_MODELS_DIR` (default `/home/kc/poc-eval-pyannote-rs/models`), `ORT_DYLIB_PATH`
 (default the dev VM's local onnxruntime .so). Silently SKIPs when the audio file is absent —
 no hard-fail on a clean clone (models download at app runtime, not in a fresh checkout).
 
@@ -84,7 +84,7 @@ no hard-fail on a clean clone (models download at app runtime, not in a fresh ch
 |---|---|
 | `update_transcript_speaker` + `speaker` plumbing + rename UI compile | ✅ **Proven** — debug `Finished dev profile in 1m 00s` exit 0 |
 | Release build | ✅ **Proven** — `Finished release profile in 5m 18s` exit 0 |
-| Release artifact | ✅ **Verified** — `meetily.exe` 42.4 MB in workspace `target\release` (01:41 same day) |
+| Release artifact | ✅ **Verified** — `track.exe` 42.4 MB in workspace `target\release` (01:41 same day) |
 | Docs / Cargo.lock consistent with build | ✅ **Audited** — lock synced, one marketing line flagged (see §7) |
 
 ---
@@ -154,7 +154,7 @@ The fork now **fully builds and packages on the Win11 box** — no more Proxmox 
 - **Node 22.11.0 installed** at `C:\Users\OIT\node22\node-v22.11.0-win-x64` (winget was broken then → direct zip). `npm`/`pnpm` in that dir.
 - **pnpm 12.8.1** installed globally (via npm, prefix = node22 dir). `pnpm install` → 643 deps, lockfile supply-chain verified ✓
 - **Winget FIXED** on the box: it crashed with `0xC0000005` on install before. Root cause was the source-agreement EULA. `winget search notepad --accept-source-agreements` works, and a real install (`winget install Notepad++.Notepad++`) succeeds. Use `--accept-source-agreements --accept-package-agreements` on all winget commands.
-- **`tauri build --no-bundle`** works end-to-end on the box → self-contained `meetily.exe` (44.4 MB at `C:\Users\OIT\meeting-helper-build\target\release\meetily.exe`). No localhost/server dependency.
+- **`tauri build --no-bundle`** works end-to-end on the box → self-contained `track.exe` (44.4 MB at `C:\Users\OIT\meeting-helper-build\target\release\track.exe`). No localhost/server dependency.
 
 ### THE WORKING BUILD PIPELINE ON WIN11 (proven, use this)
 Reusable `.bat` scripts at `C:\Users\OIT\` (also mirrored in `/home/kc/.hermes/cache/scratch/`):
@@ -163,7 +163,7 @@ Reusable `.bat` scripts at `C:\Users\OIT\` (also mirrored in `/home/kc/.hermes/c
 3. `mh_tauri_build.bat` — calls `vcvars64.bat` + sets cargo/git/LLVM/node PATH + `LIBCLANG_PATH`, then `pnpm tauri build --no-bundle`
 
 **Critical gotchas** (learned this session, do not regress):
-- **Kill the running meetily first** — the exe locks `target\release\meetily.exe`; `tauri build` fails with `os error 32` (file in use) if the app is running. `taskkill /IM meetily.exe /F` before rebuilding.
+- **Kill the running track first** — the exe locks `target\release\track.exe`; `tauri build` fails with `os error 32` (file in use) if the app is running. `taskkill /IM track.exe /F` before rebuilding.
 - The `--no-bundle` flag sidesteps signing-key requirements (see §8 SIGNING). For a real installer, drop it and provide signing keys.
 - cmd PATH chaining with `set X=...& call %X%` does NOT expand inline — write `.bat` files locally, scp to box, execute by path (the proven remote-work pattern from §5).
 - MSVC is at `C:\BuildTools\...` (vcvars64.bat at `C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat`), NOT `C:\Program Files (x86)`. LLVM at `C:\Users\OIT\LLVM\LLVM`.
@@ -189,7 +189,7 @@ Reusable `.bat` scripts at `C:\Users\OIT\` (also mirrored in `/home/kc/.hermes/c
 4. **Push the sidecar handoff wiring** if not already in the fork — verify `apply_speakers.py` bridge is fully integrated into the Tauri app (it was verified standalone earlier; the `speaker: None` at VAD-stage confirms merge happens later).
 
 ### SIGNING KEYS — how to get started (for when you want a real installer)
-- The build already verifies `TAURI_SIGNING_PRIVATE_KEY`/`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` via `build.ps1` (loads from `.env`, expects key in `.tauri\meetily.key`).
+- The build already verifies `TAURI_SIGNING_PRIVATE_KEY`/`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` via `build.ps1` (loads from `.env`, expects key in `.tauri\track.key`).
 - **Two separate keys exist in Tauri:** (a) **code-signing cert** for Windows (SignTool / `signCommand`, needs a real cert from a CA like DigiCert) and (b) the **updater signing keypair** (generated by `tauri signer generate`, public key goes in `tauri.conf.json` `plugins.updater.pubkey` — currently a placeholder).
 - For a locally distributed installer you can skip the Windows CA cert and just generate the updater keypair: `pnpm tauri signer generate`. For broader distribution you'll need a real code-signing certificate.
 - The `pubkey` in `tauri.conf.json` (L115) is the minisign placeholder from upstream — replace it with your own keypair's public key when you obtain one.
@@ -209,7 +209,7 @@ ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/win11_diar oit@10.141.9.147
 cmd /c "C:\Users\OIT\rebuild_fixes.bat"               # or build_release.bat
 
 # Verify release exe
-for %f in ("C:\Users\OIT\meeting-helper-build\target\release\meetily.exe") do @echo %~zf
+for %f in ("C:\Users\OIT\meeting-helper-build\target\release\track.exe") do @echo %~zf
 ```
 
 Working .bat scripts are at `C:\Users\OIT\` on the box and `/home/kc/.hermes/cache/scratch/` locally (`rebuild_fixes.bat`, `build_release.bat`, `verify_release_exe.bat`, `pull_build_016.bat`, etc.).
@@ -224,7 +224,7 @@ Working .bat scripts are at `C:\Users\OIT\` on the box and `/home/kc/.hermes/cac
 
 ## 11. NEXT WORK: NATIVE RUST DIARIZATION (Option B) — pick up here
 
-**Session goal:** make meetily.exe auto-label speakers post-meeting, fully native (no Python).
+**Session goal:** make track.exe auto-label speakers post-meeting, fully native (no Python).
 Trigger point CONFIRMED: frontend `useRecordingStop.ts` after `storageService.saveMeeting()` returns
 `meetingId` (L256-262) — that's when meeting + transcripts.json + audio.mp4 all exist. Fire
 `start_diarization({audio_path, meeting_id})` there.
@@ -305,7 +305,7 @@ labeled segments** (SPEAKER_00/01/02/03) via `run_pipeline` — before the fix i
 0. Regression: `6_speakers.wav` still yields 7 segments. Applied via `[patch.crates-io]`
 in root `Cargo.toml` → `path = /home/kc/poc-eval-pyannote-rs` (local fixed source); the
 app must keep this patch until upstream ships the fix. Reproducing unit test:
-`cargo test -p meetily --lib run_pipeline_on_real_speech_wav` (needs `ORT_DYLIB_PATH`
+`cargo test -p track --lib run_pipeline_on_real_speech_wav` (needs `ORT_DYLIB_PATH`
 set to a `libonnxruntime*.so`; dev-only path hardcoded in the test).
 
 ### Phase 1 build env (VM, for dev PoC)
@@ -371,7 +371,7 @@ speaker_diarization.py, diarization_utils.py}`.
 "reinstall WIPED clang/LLVM + MSVC — not buildable" note is now **outdated**: MSVC 14.44
 toolset IS installed (cl.exe at `C:\Program Files (x86)\Microsoft Visual Studio\2022\
 BuildTools\VC\Tools\MSVC\14.44.35207`), rustup stable-msvc + target present, and the
-meetily.exe **release build succeeded on oit** (cargo auto-detects VS via vswhere). Keep
+track.exe **release build succeeded on oit** (cargo auto-detects VS via vswhere). Keep
 light dev builds on this VM; full release builds on oit.
 
 ### Tooling note
@@ -395,13 +395,13 @@ yt-dlp (2026.8.19) freshly installed via `~/.hermes/tools/uv-0.12.3-linux-x64/uv
 - 3.1's runtime has **NO autotune / no spectral-eigengap K-selection** — those are legacy
   `pyannote.pipeline` trainer features. The runtime only: cut at the fixed threshold →
   prune + absorb, then respects user-supplied num_speakers bounds.
-- ⇒ meetily MUST estimate K itself. **Silhouette is the reliable estimator** here
+- ⇒ track MUST estimate K itself. **Silhouette is the reliable estimator** here
   (nails interview, 6-7 on board). **Gap-statistic is degenerate with n<<dim** (monotone/
   boundary-biased). **Spectral eigengap reports ~no separation** on cosine-normalized
   wespeaker embeds without pyannote's affinity-refinement port.
 
 **✅ Phase 2/3 DONE — native pipeline SHIPPED in app (commit `aeecd62`, 2026-10-03):**
-The full pipeline is now wired INTO meetily.exe (no Python sidecar):
+The full pipeline is now wired INTO track.exe (no Python sidecar):
 `src-tauri/src/diarization/{models,pipeline,mod}.rs` — downloads both ONNX models
 (pyannote-rs v0.1.0 release artifacts, **no HF token**; verified 200: seg 5.98MB /
 wespeaker 29.3MB, cached in app_data_dir/models/diarization), segment→drop<1s→
@@ -409,7 +409,7 @@ silhouette K→greedy-centroid-HAC-to-K→renumber→chronological segments. `ap
 in transcript.rs; frontend trigger in `useRecordingStop.ts` (fires start_diarization with
 folderPath/audio.mp4 + meetingId after saveMeeting). pyannote-rs pinned **0.3.4**
 `features=["load-dynamic"]`; errors are eyre (wrap `.map_err(|e| anyhow!(...))`).
-meetily.exe 42.8MB BUILT on Win11 (verified running 120s+; workspace-root target\release).
+track.exe 42.8MB BUILT on Win11 (verified running 120s+; workspace-root target\release).
 
 **Open ends after the shipped integration (next session):**
 1. Board-meeting K tightening (optional): port pyannote's affinity refinement
@@ -423,7 +423,7 @@ meetily.exe 42.8MB BUILT on Win11 (verified running 120s+; workspace-root target
    tauri-cli`) — plain `cargo build` already yields the runnable exe.
 
 ### ✅ SIGNED INSTALLERS BUILT (2026-10-05) — updater keypair + own repo
-- Generated minisign keypair on box: `.tauri/meetily.key` (private) + `.tauri/meetily.key.pub` (public).
+- Generated minisign keypair on box: `.tauri/track.key` (private) + `.tauri/track.key.pub` (public).
   Committed the NEW pubkey into `tauri.conf.json plugins.updater.pubkey` and repointed
   `endpoints` to `github.com/kctech455/meeting-helper/releases/latest/download/latest.json`
   (commit `18ac436`). Root `.gitignore` now excludes `frontend/src-tauri/.tauri/` + `frontend/.env`
@@ -432,15 +432,15 @@ meetily.exe 42.8MB BUILT on Win11 (verified running 120s+; workspace-root target
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Loaded into process env by PowerShell script
   `C:\Users\OIT\source_build.ps1` (cmd `set` vars do NOT propagate to tauri build; PS does).
 - Output (all signed with the minisign key, verify with the .sig sidecars):
-  - `target\release\bundle\nsis\meetily_0.4.1_x64-setup.exe` (42 MB) — recommended for 2nd machine
-  - `target\release\bundle\msi\meetily_0.4.1_x64_en-US.msi` (70 MB) + both `.sig`
+  - `target\release\bundle\nsis\track_0.4.1_x64-setup.exe` (42 MB) — recommended for 2nd machine
+  - `target\release\bundle\msi\track_0.4.1_x64_en-US.msi` (70 MB) + both `.sig`
   - Both are SELF-CONTAINED: bundle ffmpeg.exe (99MB), llama-helper, onnxruntime.dll, frontend.
 - Installers mirrored on VM at `/home/kc/myApps/meeting-helper/dist/` for copying to another PC.
 - NOTE: `sign-windows.ps1` skips Authenticode (no `DIGICERT_KEYPAIR_ALIAS`) → SmartScreen may warn.
   Future: use SignPath Foundation (free OSS code signing, signpath.org/apply.html) for a trusted
   signature that avoids the SmartScreen warning. See `building-whisper-rs-tauri` skill.
 - The full build runs `beforeBuildCommand pnpm build` then bundles — rebuild on the box with
-  `powershell -File C:\Users\OIT\source_build.ps1` (which loads .env first). KILL meetily before
+  `powershell -File C:\Users\OIT\source_build.ps1` (which loads .env first). KILL track before
   building (os error 32 if running/locked).
 
 ### UI speaker handling (already built — no new UI work for display + manual rename)

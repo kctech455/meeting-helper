@@ -549,12 +549,12 @@ mod tests {
     /// assets on the dev VM. The test SKIPS when the audio file is absent so it
     /// never hard-fails a clean checkout (models download at app runtime, so the
     /// onnx files are not expected in a fresh clone). Run locally with, e.g.:
-    ///   MEETILY_TEST_WAV=/path/to/meeting_16k.wav \
+    ///   TRACK_TEST_WAV=/path/to/meeting_16k.wav \
     ///   ORT_DYLIB_PATH=/path/to/libonnxruntime.so \
-    ///   cargo test -p meetily --lib run_pipeline_on_real_speech_wav -- --nocapture
+    ///   cargo test -p track --lib run_pipeline_on_real_speech_wav -- --nocapture
     #[test]
     fn run_pipeline_on_real_speech_wav() {
-        let wav = std::env::var("MEETILY_TEST_WAV")
+        let wav = std::env::var("TRACK_TEST_WAV")
             .unwrap_or_else(|_| "/home/kc/Downloads/meeting_16k.wav".into());
         if !std::path::Path::new(&wav).exists() {
             eprintln!("SKIP: repro audio not present ({wav}) — dev-only test");
@@ -567,7 +567,7 @@ mod tests {
             std::env::set_var("ORT_DYLIB_PATH",
                 "/home/kc/.hermes/hermes-agent/venv/lib/python3.11/site-packages/onnxruntime/capi/libonnxruntime.so.1.28.0");
         }
-        let models_dir = std::env::var("MEETILY_TEST_MODELS_DIR")
+        let models_dir = std::env::var("TRACK_TEST_MODELS_DIR")
             .unwrap_or_else(|_| "/home/kc/poc-eval-pyannote-rs/models".into());
         let seg = format!("{models_dir}/segmentation-3.0.onnx");
         let emb = format!("{models_dir}/wespeaker_en_voxceleb_CAM++.onnx");

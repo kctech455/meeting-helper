@@ -1,7 +1,7 @@
-# SCOPE — Native Speaker Diarization for meetily.exe (Option B)
+# SCOPE — Native Speaker Diarization for track.exe (Option B)
 
 > Goal: make the Tauri app **automatically** label each transcript segment with a speaker
-> after a meeting concludes — running entirely inside `meetily.exe`, no Python dependency.
+> after a meeting concludes — running entirely inside `track.exe`, no Python dependency.
 > Restore the deleted pyannote module and wire it to the existing `speaker` column + rename UI.
 
 **Status: SCOPED (not started).** Authored 2026-10-03. Companion to HANDOFF.md §8 item 4.
@@ -66,7 +66,7 @@ nearest-neighbor — document that as a design decision.
   crate. Pin a version already in the tree to avoid a second bindgen-style fight.
 - **ndarray** — used for window math.
 - **HF model download** — restore the download helper (reqwest or huggingface-hub crate). Models
-  are ~tens of MB; cache in `%APPDATA%/meetily/models`.
+  are ~tens of MB; cache in `%APPDATA%/track/models`.
 - **Token/license note:** upstream pulled these ONNX models off HuggingFace; pyannote now gates
   some behind a license. Verify these two specific ONNX artifacts are freely downloadable before
   committing to this path — this is the same risk that blocked the Python sidecar. (The Python POC
@@ -125,7 +125,7 @@ overlap logic from `apply_speakers.py:62` — it's already proven.
 | 1 — Batch diarization core | Implement offline `get_segments()` over a full `audio.mp4` (global clustering), standalone test against a known multi-speaker clip. | 3-5 d |
 | 2 — Merge + trigger | `start_diarization` command, overlap-merge into `transcripts.speaker`, frontend trigger after `saveMeeting`, progress events. | 2-3 d |
 | 3 — UI polish | Settings toggle, progress banner, auto-refetch, error/retry UX. | 2-3 d |
-| 4 — Win11 build | Rebuild `meetily.exe`, verify end-to-end on the box; update README/Cargo.lock. | 1-2 d |
+| 4 — Win11 build | Rebuild `track.exe`, verify end-to-end on the box; update README/Cargo.lock. | 1-2 d |
 | **Total** | | **~2 weeks**, up to 4 with clustering + model/license risk |
 
 ---
