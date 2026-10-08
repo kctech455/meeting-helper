@@ -297,7 +297,7 @@ All workflows require these secrets to be configured:
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Key password
 
 ### Application Configuration
-- `TRACK_RSA_PUBLIC_KEY` - License validation public key
+- ~~`TRACK_RSA_PUBLIC_KEY`~~ - License validation public key (removed - not used; secret never existed)
 - `SUPABASE_URL` - Online license verification
 - `SUPABASE_ANON_KEY` - Supabase anonymous key
 
